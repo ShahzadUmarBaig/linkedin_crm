@@ -1,0 +1,16 @@
+{
+  "name": "linkedin-crm",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "web",
+    "extension",
+    "shared"
+  ],
+  "scripts": {
+    "dev:web": "npm --workspace web run dev",
+    "build:web": "npm --workspace web run build",
+    "dev:ext": "npm --workspace extension run dev",
+    "build:ext": "npm --workspace extension run build"
+  }
+}

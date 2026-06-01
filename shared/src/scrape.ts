@@ -1,0 +1,61 @@
+// Payload shapes the extension sends to the web app's /api/ingest endpoint.
+// Keep these dumb data carriers — no logic. Both sides import from here.
+
+export type ScrapedMediaType = 'text' | 'image' | 'video' | 'article' | 'poll' | 'document'
+export type ScrapedEngagementType = 'reaction' | 'comment' | 'repost'
+
+export interface ScrapedPersonInput {
+  linkedinUrn?: string
+  profileUrl?: string
+  fullName?: string
+  headline?: string
+  company?: string
+  isConnection?: boolean
+  raw?: unknown
+}
+
+export interface ScrapedOwnPostInput {
+  linkedinUrn: string
+  url?: string
+  postedAt?: string // ISO
+  body?: string
+  media?: ScrapedMediaType
+  metrics?: {
+    impressions?: number
+    likes?: number
+    comments?: number
+    reposts?: number
+  }
+  raw?: unknown
+}
+
+export interface ScrapedInspirationPostInput {
+  linkedinUrn?: string
+  url?: string
+  author?: ScrapedPersonInput
+  body?: string
+  media?: ScrapedMediaType
+  postedAt?: string
+  likes?: number
+  comments?: number
+  reposts?: number
+  raw?: unknown
+}
+
+export interface ScrapedEngagementInput {
+  postUrn: string // matches scraped post's linkedin_urn
+  person: ScrapedPersonInput
+  type: ScrapedEngagementType
+  reaction?: string
+  commentText?: string
+  engagedAt?: string
+}
+
+export interface ScrapeBatch {
+  startedAt: string
+  sourcePages: string[]
+  ownPosts: ScrapedOwnPostInput[]
+  inspirationPosts: ScrapedInspirationPostInput[]
+  people: ScrapedPersonInput[]
+  engagements: ScrapedEngagementInput[]
+}
