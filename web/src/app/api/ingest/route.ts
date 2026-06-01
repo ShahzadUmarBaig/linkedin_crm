@@ -1,5 +1,6 @@
-import { NextResponse, type NextRequest } from 'next/server'
+import { NextResponse, after, type NextRequest } from 'next/server'
 import { ingestBatch } from '@/lib/ingest'
+import { generateIdeas } from '@/lib/ideas'
 import type { ScrapeBatch } from '@crm/shared'
 
 // Extension → CRM ingest endpoint.
@@ -11,6 +12,8 @@ import type { ScrapeBatch } from '@crm/shared'
 // We deliberately do NOT set Allow-Credentials.
 
 export const runtime = 'nodejs'
+// Allow up to 60s — covers the ingest writes (fast) + the after() idea-generation pass (5-15s).
+export const maxDuration = 60
 
 const CORS_HEADERS: Record<string, string> = {
   'Access-Control-Allow-Origin': '*',
@@ -50,6 +53,22 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await ingestBatch(userId, batch)
+
+    // Trigger idea generation in the background — the user doesn't wait on it,
+    // and failures here don't affect the ingest response.
+    after(async () => {
+      try {
+        const r = await generateIdeas(userId, { scrapeRunId: result.scrapeRunId })
+        if (r.skipped) {
+          console.log(`[ideas] skipped: ${r.reason}`)
+        } else {
+          console.log(`[ideas] generated ${r.generated} (cost $${(r.costUsd ?? 0).toFixed(4)}, model ${r.model})`)
+        }
+      } catch (err) {
+        console.error('[ideas] generation failed', err)
+      }
+    })
+
     return withCors(NextResponse.json(result))
   } catch (err) {
     const message = err instanceof Error ? err.message : 'ingest failed'

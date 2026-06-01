@@ -54,6 +54,10 @@ export interface ScrapedEngagementInput {
 export interface ScrapeBatch {
   startedAt: string
   sourcePages: string[]
+  // The user's own LinkedIn profile data, captured the last time they visited their own profile.
+  // The server syncs this into `profile` (display_name, headline, linkedin_url), leaving the
+  // AI-inferred fields (niche, audience, tone, pillars) untouched.
+  selfProfile?: ScrapedPersonInput
   ownPosts: ScrapedOwnPostInput[]
   inspirationPosts: ScrapedInspirationPostInput[]
   people: ScrapedPersonInput[]

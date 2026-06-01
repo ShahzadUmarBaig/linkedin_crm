@@ -48,6 +48,11 @@ export async function ingestBatch(userId: string, batch: ScrapeBatch): Promise<I
   const scrapeRunId: string = run.id
 
   try {
+    // 0. Sync self profile into the `profile` table if the extension captured it.
+    if (batch.selfProfile) {
+      await syncSelfProfile(supabase, userId, batch.selfProfile)
+    }
+
     // 1. People — keyed by profile_url. People without profile_url are skipped.
     const allPeople = collectPeople(batch)
     const peopleIdByKey = await upsertPeople(supabase, userId, allPeople)
@@ -113,6 +118,26 @@ export async function ingestBatch(userId: string, batch: ScrapeBatch): Promise<I
 }
 
 // ---------- helpers ----------
+
+// Sync the user's own LinkedIn profile data into the `profile` table.
+// Only writes identity fields (display_name, headline, linkedin_url). Leaves the
+// AI-inferred fields (niche, audience, tone, pillars) and user-edited fields untouched.
+async function syncSelfProfile(supabase: Supa, userId: string, self: ScrapedPersonInput): Promise<void> {
+  if (!self.profileUrl) return
+
+  // Upsert ONLY the fields we want to refresh. Supabase's upsert touches exactly the columns
+  // present in the payload; everything else (niche, pillars, etc.) stays as-is on update.
+  const patch: Record<string, unknown> = {
+    user_id: userId,
+    linkedin_url: self.profileUrl,
+    updated_at: new Date().toISOString(),
+  }
+  if (self.fullName) patch.display_name = self.fullName
+  if (self.headline) patch.headline = self.headline
+
+  const { error } = await supabase.from('profile').upsert(patch, { onConflict: 'user_id' })
+  if (error) throw new Error(`profile upsert (self) failed: ${error.message}`)
+}
 
 function personKey(p: ScrapedPersonInput): string | null {
   return p.profileUrl ? p.profileUrl : null

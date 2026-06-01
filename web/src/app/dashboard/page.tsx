@@ -16,6 +16,12 @@ export default async function DashboardPage() {
           </div>
           <div className="flex items-center gap-2">
             <Link
+              href="/ideas"
+              className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
+            >
+              Ideas
+            </Link>
+            <Link
               href="/profile"
               className="rounded-md border border-zinc-300 px-3 py-1.5 text-sm hover:bg-zinc-100 dark:border-zinc-700 dark:hover:bg-zinc-800"
             >

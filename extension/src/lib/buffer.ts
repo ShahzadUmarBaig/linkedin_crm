@@ -19,6 +19,7 @@ const BUFFER_KEY = 'scrapeBuffer'
 interface Buffer {
   startedAt: string
   sourcePages: string[]
+  selfProfile?: ScrapedPersonInput
   ownPosts: Record<string, ScrapedOwnPostInput>           // keyed by linkedinUrn
   inspirationPosts: Record<string, ScrapedInspirationPostInput>
   people: Record<string, ScrapedPersonInput>              // keyed by profileUrl or urn
@@ -98,6 +99,16 @@ export function recordPerson(person: ScrapedPersonInput): Promise<void> {
   })
 }
 
+// Called only when the captured profile is the user's own. Stored in a dedicated slot so
+// the server can sync it into `profile` (not `people`).
+export function recordSelfProfile(person: ScrapedPersonInput): Promise<void> {
+  return enqueue(async () => {
+    const buf = await readBuffer()
+    buf.selfProfile = { ...buf.selfProfile, ...person }
+    await writeBuffer(buf)
+  })
+}
+
 export function recordEngagement(e: ScrapedEngagementInput): Promise<void> {
   return enqueue(async () => {
     const buf = await readBuffer()
@@ -115,6 +126,7 @@ export async function snapshotBatch(): Promise<ScrapeBatch> {
   return {
     startedAt: buf.startedAt,
     sourcePages: buf.sourcePages,
+    selfProfile: buf.selfProfile,
     ownPosts: Object.values(buf.ownPosts),
     inspirationPosts: Object.values(buf.inspirationPosts),
     people: Object.values(buf.people),

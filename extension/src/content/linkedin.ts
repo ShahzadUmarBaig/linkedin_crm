@@ -8,26 +8,43 @@ import {
   recordOwnPost,
   recordPage,
   recordPerson,
+  recordSelfProfile,
 } from '../lib/buffer'
 import { extractProfile } from './extractors/profile'
 import { scanPosts } from './extractors/posts'
 import { onUrlChange } from './observer'
-import { activityPageSlug, isProfilePage, waitFor } from './util'
+import { activityPageSlug, canonicalProfileUrl, isProfilePage, waitFor } from './util'
 
 let postsObserver: MutationObserver | null = null
 
 async function runExtractors() {
   await recordPage(location.href)
 
-  // Profile pages — capture the topcard.
+  // Profile pages — capture the topcard. Route to selfProfile or people based on slug match.
   if (isProfilePage()) {
     const person = await waitFor(() => extractProfile(), { timeoutMs: 8000 })
     if (person) {
-      await recordPerson(person)
+      const config = await getConfig()
+      const selfSlug = config.selfLinkedinSlug?.trim() || null
+      const ownCanonical = selfSlug
+        ? `https://www.linkedin.com/in/${selfSlug}/`
+        : null
+      const isSelf = ownCanonical !== null && canonicalProfileUrl(location.href) === ownCanonical
+
+      if (isSelf) {
+        await recordSelfProfile(person)
+        console.log('[linkedin-crm] captured SELF profile', person.fullName)
+      } else {
+        await recordPerson(person)
+        console.log('[linkedin-crm] captured profile', person.fullName)
+      }
       await chrome.storage.local.set({
-        lastCapture: { kind: 'profile', name: person.fullName, at: new Date().toISOString() },
+        lastCapture: {
+          kind: isSelf ? 'self-profile' : 'profile',
+          name: person.fullName,
+          at: new Date().toISOString(),
+        },
       })
-      console.log('[linkedin-crm] captured profile', person.fullName)
     }
   }
 
