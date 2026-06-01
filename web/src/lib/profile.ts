@@ -125,7 +125,7 @@ export async function inferProfileFromPosts(userId: string): Promise<InferProfil
     task: 'profile_inference',
     system: SYSTEM_PROMPT,
     user: userPrompt,
-    maxTokens: 1500,
+    maxTokens: 4096,
   })
 
   const inferred = parseInference(response.text)

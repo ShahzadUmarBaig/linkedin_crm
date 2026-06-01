@@ -157,7 +157,7 @@ export async function generateIdeas(
     task: 'idea_generation',
     system: SYSTEM_PROMPT,
     user: userPrompt,
-    maxTokens: 2000,
+    maxTokens: 4096,
     scrapeRunId: opts?.scrapeRunId ?? null,
   })
 

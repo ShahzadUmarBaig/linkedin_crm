@@ -120,7 +120,7 @@ async function callAnthropic(apiKey: string, model: string, req: GenerateRequest
   const client = new Anthropic({ apiKey, maxRetries: 0 })
   const msg = await client.messages.create({
     model,
-    max_tokens: req.maxTokens ?? 2048,
+    max_tokens: req.maxTokens ?? 4096,
     system: req.system,
     messages: [{ role: 'user', content: req.user }],
   })
@@ -137,12 +137,17 @@ async function callAnthropic(apiKey: string, model: string, req: GenerateRequest
 
 async function callGoogle(apiKey: string, model: string, req: GenerateRequest) {
   const ai = new GoogleGenAI({ apiKey })
+  // All our tasks expect a JSON response. Forcing application/json on Gemini means:
+  //   1. Model outputs raw JSON (no markdown fences)
+  //   2. Response is guaranteed parseable JSON (or the API errors)
+  //   3. No tokens wasted on prose preamble
   const response = await ai.models.generateContent({
     model,
     contents: req.user,
     config: {
       systemInstruction: req.system,
-      maxOutputTokens: req.maxTokens ?? 2048,
+      maxOutputTokens: req.maxTokens ?? 4096,
+      responseMimeType: 'application/json',
     },
   })
   return {

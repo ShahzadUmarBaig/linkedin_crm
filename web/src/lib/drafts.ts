@@ -63,7 +63,7 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
     task: 'draft_write',
     system,
     user,
-    maxTokens: 2000,
+    maxTokens: 4096,
   })
 
   const parsed = parseDraftResponse(response.text)
