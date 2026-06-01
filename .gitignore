@@ -12,3 +12,4 @@ build/
 .vite/
 coverage/
 .claude/settings.local.json
+.mcp.json

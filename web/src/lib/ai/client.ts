@@ -52,17 +52,13 @@ export async function generate(req: GenerateRequest): Promise<GenerateResponse> 
   let outputTokens = 0
 
   try {
-    if (provider === 'anthropic') {
-      const result = await callAnthropic(apiKey, model, req)
-      text = result.text
-      inputTokens = result.inputTokens
-      outputTokens = result.outputTokens
-    } else {
-      const result = await callGoogle(apiKey, model, req)
-      text = result.text
-      inputTokens = result.inputTokens
-      outputTokens = result.outputTokens
-    }
+    const result = await withRetry(
+      () => (provider === 'anthropic' ? callAnthropic(apiKey, model, req) : callGoogle(apiKey, model, req)),
+      { label: `${provider}/${model} ${req.task}` },
+    )
+    text = result.text
+    inputTokens = result.inputTokens
+    outputTokens = result.outputTokens
   } catch (err) {
     await logRun(req, provider, model, 0, 0, 0, 'error', err instanceof Error ? err.message : String(err))
     throw err
@@ -74,8 +70,54 @@ export async function generate(req: GenerateRequest): Promise<GenerateResponse> 
   return { text, provider, model, inputTokens, outputTokens, costUsd, aiRunId }
 }
 
+// ---------- retry ----------
+// Wraps provider calls. Retries only on transient errors (network, 429, 502/503/504).
+// Other errors (auth, bad request, validation) fail immediately to surface real bugs.
+const MAX_ATTEMPTS = 3
+const BASE_DELAY_MS = 1000  // 1s, 3s, 9s — plus jitter
+
+async function withRetry<T>(fn: () => Promise<T>, opts: { label: string }): Promise<T> {
+  let lastErr: unknown
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    try {
+      return await fn()
+    } catch (err) {
+      lastErr = err
+      const retryable = isRetryable(err)
+      if (attempt === MAX_ATTEMPTS || !retryable) throw err
+      const delay = Math.pow(3, attempt - 1) * BASE_DELAY_MS + Math.floor(Math.random() * 400)
+      const msg = err instanceof Error ? err.message : String(err)
+      console.warn(`[ai] ${opts.label} attempt ${attempt}/${MAX_ATTEMPTS} transient failure, retrying in ${delay}ms — ${msg.slice(0, 160)}`)
+      await new Promise((r) => setTimeout(r, delay))
+    }
+  }
+  throw lastErr
+}
+
+function isRetryable(err: unknown): boolean {
+  if (!err) return false
+
+  // Anthropic SDK errors expose a status property on its APIError class.
+  const status = (err as { status?: number }).status
+  if (typeof status === 'number') {
+    return status === 408 || status === 429 || status === 500 || status === 502 || status === 503 || status === 504
+  }
+
+  // Google SDK throws Error whose .message often contains the raw JSON body.
+  const message = err instanceof Error ? err.message : String(err)
+  if (/"code":\s*(408|429|500|502|503|504)\b/.test(message)) return true
+  if (/\b(UNAVAILABLE|RESOURCE_EXHAUSTED|INTERNAL|DEADLINE_EXCEEDED)\b/i.test(message)) return true
+
+  // Network / fetch transient errors.
+  if (/ECONNRESET|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|fetch failed|socket hang up/i.test(message)) return true
+
+  return false
+}
+
 async function callAnthropic(apiKey: string, model: string, req: GenerateRequest) {
-  const client = new Anthropic({ apiKey })
+  // Disable the SDK's built-in retries so our retry policy is the only one in effect.
+  // Otherwise both layers retry independently (default SDK does 2 retries), causing 6+ attempts.
+  const client = new Anthropic({ apiKey, maxRetries: 0 })
   const msg = await client.messages.create({
     model,
     max_tokens: req.maxTokens ?? 2048,
