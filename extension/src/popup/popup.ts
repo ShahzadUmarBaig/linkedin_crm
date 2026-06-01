@@ -7,6 +7,7 @@ const statusEl = $<HTMLDivElement>('status')
 const apiBaseUrlInput = $<HTMLInputElement>('apiBaseUrl')
 const ingestSecretInput = $<HTMLInputElement>('ingestSecret')
 const userIdInput = $<HTMLInputElement>('userId')
+const selfSlugInput = $<HTMLInputElement>('selfLinkedinSlug')
 
 function setStatus(message: string, kind: 'ok' | 'err' | null) {
   statusEl.textContent = message
@@ -53,6 +54,7 @@ async function loadConfig() {
   apiBaseUrlInput.value = c.apiBaseUrl ?? ''
   ingestSecretInput.value = c.ingestSecret ?? ''
   userIdInput.value = c.userId ?? ''
+  selfSlugInput.value = c.selfLinkedinSlug ?? ''
 }
 
 $<HTMLButtonElement>('save').addEventListener('click', async () => {
@@ -60,6 +62,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
     apiBaseUrl: apiBaseUrlInput.value.trim().replace(/\/$/, ''),
     ingestSecret: ingestSecretInput.value.trim(),
     userId: userIdInput.value.trim(),
+    selfLinkedinSlug: selfSlugInput.value.trim().replace(/^\/+|\/+$/g, '').replace(/^in\//, ''),
   })
   setStatus('Settings saved.', 'ok')
 })
