@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireUser } from '@/lib/auth'
 import { generateIdeas, rejectIdea, updateIdeaFields } from '@/lib/ideas'
+import { approveIdea } from '@/lib/drafts'
 
 export async function triggerGenerateIdeas(force = false): Promise<
   { error: string } | { ok: true; generated: number; skipped: boolean; reason?: string; costUsd?: number; model?: string }
@@ -42,8 +43,19 @@ export async function updateIdeaAction(
   }
 }
 
-// approveIdeaAction will trigger draft generation + scheduling — coming in the next step.
-export async function approveIdeaAction(_ideaId: string): Promise<{ error: string }> {
-  await requireUser()
-  return { error: 'Approve flow not built yet — comes with the draft writer.' }
+export async function approveIdeaAction(
+  ideaId: string,
+): Promise<
+  | { error: string }
+  | { ok: true; draftId: string; slotId: string; scheduledFor: string; schedulingReasoning: string; costUsd: number; model: string }
+> {
+  const user = await requireUser()
+  try {
+    const result = await approveIdea(user.id, ideaId)
+    revalidatePath('/ideas')
+    revalidatePath('/calendar')
+    return { ok: true, ...result }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'approve failed' }
+  }
 }
