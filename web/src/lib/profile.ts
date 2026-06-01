@@ -71,20 +71,27 @@ export async function saveProfile(userId: string, update: ProfileUpdate): Promis
 
 const SYSTEM_PROMPT = `You analyze a person's LinkedIn posts and infer their personal brand profile.
 
-Return ONLY a JSON object matching this exact shape (no prose, no markdown fences):
+Return ONLY a JSON object matching this EXACT shape. Note that "pillars" MUST be an array of
+objects, each with both a "name" string AND a "description" string. Do NOT use bare strings.
+
+EXAMPLE of the required shape:
 {
-  "niche": "1 short sentence — the space they operate in",
-  "audience": "1 short sentence — who they're talking to",
-  "tone": "1 short phrase — how they sound (e.g. 'casual and direct', 'professional and analytical')",
+  "niche": "Helping early-stage founders ship faster by combining product-led thinking with AI tools.",
+  "audience": "Solo founders and product-leaning engineers at pre-seed to seed stage who are shipping their first SaaS.",
+  "tone": "Direct, slightly contrarian, with concrete anecdotes from real shipping decisions.",
   "pillars": [
-    { "name": "Pillar name (2-4 words)", "description": "1 sentence on what this pillar covers" }
+    { "name": "Shipping with AI", "description": "How to use Claude, Cursor, and Codex to compress weeks of work into days without producing slop." },
+    { "name": "Founder reality", "description": "Unfiltered notes on the gap between startup advice and what actually moves the needle when you're 3 people." },
+    { "name": "Product-engineering bridge", "description": "Why most engineer-founders ship the wrong thing first, and how to fix it before raising." }
   ]
 }
 
 Rules:
-- 3 to 5 pillars, distinct from each other.
-- Base your answer ONLY on the posts. If posts are sparse, mark fields as "Not enough signal yet" rather than guessing.
-- Output a single JSON object, nothing else.`
+- 3 to 5 pillars. Each pillar is an OBJECT with "name" (2-4 words) AND "description" (one sentence).
+- Pillars must be distinct from each other — different themes, not synonyms.
+- Base your answer ONLY on the posts. If posts are sparse, still produce pillars but make them tentative.
+- Match the user's voice, not the example's voice — the example is for SHAPE only.
+- Output a single JSON object. No prose, no markdown fences, no preamble.`
 
 interface InferenceOutput {
   niche: string
@@ -178,14 +185,24 @@ function parseInference(text: string): InferenceOutput {
   const niche = String(obj.niche ?? '')
   const audience = String(obj.audience ?? '')
   const tone = String(obj.tone ?? '')
+  // Gemini sometimes returns pillars as plain strings instead of {name, description} objects.
+  // Be forgiving: accept either shape.
   const rawPillars = Array.isArray(obj.pillars) ? obj.pillars : []
   const pillars: Pillar[] = rawPillars
-    .filter((p): p is Record<string, unknown> => typeof p === 'object' && p !== null)
-    .map((p) => ({
-      name: String(p.name ?? '').trim(),
-      description: String(p.description ?? '').trim(),
-    }))
-    .filter((p) => p.name)
+    .map((p): Pillar | null => {
+      if (typeof p === 'string') {
+        const name = p.trim()
+        return name ? { name, description: '' } : null
+      }
+      if (typeof p === 'object' && p !== null) {
+        const o = p as Record<string, unknown>
+        const name = String(o.name ?? o.title ?? '').trim()
+        const description = String(o.description ?? o.desc ?? o.detail ?? '').trim()
+        return name ? { name, description } : null
+      }
+      return null
+    })
+    .filter((p): p is Pillar => p !== null)
 
   if (!niche || !audience || !tone || pillars.length === 0) {
     throw new Error('AI response missing required fields.')
