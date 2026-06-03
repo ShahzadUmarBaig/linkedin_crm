@@ -15,6 +15,7 @@ export interface ProfileRow {
   linkedin_url: string | null
   display_name: string | null
   headline: string | null
+  bio: string | null
   niche: string | null
   audience: string | null
   tone: string | null
@@ -44,6 +45,7 @@ export interface ProfileUpdate {
   linkedinUrl?: string | null
   displayName?: string | null
   headline?: string | null
+  bio?: string | null
   niche?: string | null
   audience?: string | null
   tone?: string | null
@@ -57,6 +59,7 @@ export async function saveProfile(userId: string, update: ProfileUpdate): Promis
   if (update.linkedinUrl !== undefined) patch.linkedin_url = update.linkedinUrl
   if (update.displayName !== undefined) patch.display_name = update.displayName
   if (update.headline !== undefined) patch.headline = update.headline
+  if (update.bio !== undefined) patch.bio = update.bio
   if (update.niche !== undefined) patch.niche = update.niche
   if (update.audience !== undefined) patch.audience = update.audience
   if (update.tone !== undefined) patch.tone = update.tone
@@ -112,20 +115,29 @@ export interface InferProfileResult {
 export async function inferProfileFromPosts(userId: string): Promise<InferProfileResult> {
   // Use service client to bypass RLS for a server-side read of user's own data.
   const supabase = createSupabaseServiceClient()
-  const { data: posts, error } = await supabase
-    .from('scraped_posts')
-    .select('body, posted_at, media')
-    .eq('user_id', userId)
-    .not('body', 'is', null)
-    .order('posted_at', { ascending: false, nullsFirst: false })
-    .limit(50)
+
+  // Pull the user's own About-section bio (scraped from LinkedIn topcard) — this is the
+  // single richest voice signal available, often clearer than 50 posts of evidence.
+  const [{ data: posts, error }, { data: prof }] = await Promise.all([
+    supabase
+      .from('scraped_posts')
+      .select('body, posted_at, media')
+      .eq('user_id', userId)
+      .not('body', 'is', null)
+      .order('posted_at', { ascending: false, nullsFirst: false })
+      .limit(50),
+    supabase.from('profile').select('bio, headline').eq('user_id', userId).maybeSingle(),
+  ])
 
   if (error) throw new Error(`failed to read scraped_posts: ${error.message}`)
   if (!posts || posts.length === 0) {
     throw new Error('No scraped posts yet. Scrape your own LinkedIn activity first.')
   }
 
-  const userPrompt = buildUserPrompt(posts.map((p) => ({ body: p.body ?? '', postedAt: p.posted_at, media: p.media })))
+  const userPrompt = buildUserPrompt(
+    posts.map((p) => ({ body: p.body ?? '', postedAt: p.posted_at, media: p.media })),
+    { bio: prof?.bio ?? null, headline: prof?.headline ?? null },
+  )
 
   const response = await generate({
     userId,
@@ -163,13 +175,28 @@ export async function inferProfileFromPosts(userId: string): Promise<InferProfil
   }
 }
 
-function buildUserPrompt(posts: Array<{ body: string; postedAt: string | null; media: string | null }>): string {
-  const lines = posts.map((p, i) => {
+function buildUserPrompt(
+  posts: Array<{ body: string; postedAt: string | null; media: string | null }>,
+  ground: { bio: string | null; headline: string | null },
+): string {
+  const sections: string[] = []
+
+  if (ground.headline || ground.bio) {
+    sections.push('GROUND TRUTH FROM USER\'S LINKEDIN PROFILE (weight this heavily — they wrote it deliberately):')
+    if (ground.headline) sections.push(`Headline: ${ground.headline}`)
+    if (ground.bio) sections.push(`About:\n${ground.bio}`)
+  }
+
+  const postLines = posts.map((p, i) => {
     const date = p.postedAt ? p.postedAt.slice(0, 10) : 'unknown date'
     const media = p.media ?? 'text'
     return `--- Post ${i + 1} (${date}, ${media}) ---\n${p.body}`
   })
-  return `Here are my ${posts.length} most recent LinkedIn posts. Infer my profile.\n\n${lines.join('\n\n')}`
+  sections.push(`RECENT POSTS (${posts.length}):`)
+  sections.push(postLines.join('\n\n'))
+
+  sections.push('Infer my profile per the JSON shape in the system prompt. Pillars must be objects with name + description.')
+  return sections.join('\n\n')
 }
 
 function parseInference(text: string): InferenceOutput {

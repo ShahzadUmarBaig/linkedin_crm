@@ -169,24 +169,42 @@ function extractMetrics(el: HTMLElement): { likes?: number; comments?: number; r
 }
 
 function extractImpressions(el: HTMLElement): number | null {
-  // 1. "View analytics" link's aria-label often contains the impressions number.
-  const analyticsBtn = el.querySelector<HTMLElement>(
-    'a[aria-label*="impression" i], button[aria-label*="impression" i], a[href*="/analytics/"]',
-  )
-  if (analyticsBtn) {
-    const aria = analyticsBtn.getAttribute('aria-label') ?? ''
-    const m = aria.match(/([\d,]+)\s*impression/i)
+  // Impressions appear in three places, in roughly increasing fragility:
+  //   (a) aria-label of the analytics button (most stable)
+  //   (b) text content of the analytics summary container
+  //   (c) loose text node anywhere in the post matching "<N> impressions"
+  // We try all three and accept the first hit.
+
+  const re = /([\d,]+)\s*impressions?/i
+
+  // (a) Any element whose aria-label mentions impressions.
+  const ariaCandidates = el.querySelectorAll('[aria-label*="impression" i], [aria-label*="Impression" i]')
+  for (const node of ariaCandidates) {
+    const m = (node.getAttribute('aria-label') ?? '').match(re)
     if (m) return parseInt(m[1].replace(/,/g, ''), 10)
   }
 
-  // 2. Search short text nodes for "<N> impressions". Limit to button/a/span/div leaves to
-  //    avoid scanning the whole subtree.
-  const candidates = el.querySelectorAll('button, a, span, div, p')
+  // (b) Analytics summary containers LinkedIn has used in the wild.
+  const summary = el.querySelector(
+    '.feed-shared-update-v2__analytics-summary, .update-v2-social-activity, [data-test-id*="analytics"]',
+  )
+  if (summary) {
+    const m = (summary.textContent ?? '').match(re)
+    if (m) return parseInt(m[1].replace(/,/g, ''), 10)
+  }
+
+  // (c) Loose text-node scan over leaf-ish elements. Reject very long texts to avoid
+  //     matching unrelated body content that mentions "impressions".
+  const candidates = el.querySelectorAll('button, a, span, div, p, strong')
   for (const node of candidates) {
     const t = node.textContent?.trim() ?? ''
-    if (t.length === 0 || t.length > 60) continue
-    const m = t.match(/^([\d,]+)\s*impressions?$/i)
-    if (m) return parseInt(m[1].replace(/,/g, ''), 10)
+    if (t.length === 0 || t.length > 80) continue
+    const m = t.match(re)
+    if (!m) continue
+    // Sanity check: the match should constitute most of the element's text, not be buried
+    // inside a paragraph that happens to use the word "impressions".
+    if (m[0].length / t.length < 0.3) continue
+    return parseInt(m[1].replace(/,/g, ''), 10)
   }
   return null
 }
@@ -220,9 +238,27 @@ function extractComments(
   postUrn: string,
 ): Array<{ person: ScrapedPersonInput; engagement: ScrapedEngagementInput }> {
   const out: Array<{ person: ScrapedPersonInput; engagement: ScrapedEngagementInput }> = []
-  const commentEls = postEl.querySelectorAll<HTMLElement>(
-    'article.comments-comment-entity, .comments-comment-item, [data-id*="comment"]',
-  )
+
+  // Most-stable signal: anything with a data-id / data-urn containing 'urn:li:comment:'.
+  // Falls back to LinkedIn's class-named selectors.
+  const commentSelectors = [
+    '[data-id*="urn:li:comment:"]',
+    '[data-urn*="urn:li:comment:"]',
+    'article.comments-comment-entity',
+    'article.comments-comment-item',
+    '.comments-comment-entity',
+    '.comments-comment-item',
+  ]
+  const seen = new Set<Element>()
+  const commentEls: HTMLElement[] = []
+  for (const sel of commentSelectors) {
+    postEl.querySelectorAll<HTMLElement>(sel).forEach((el) => {
+      if (!seen.has(el)) {
+        seen.add(el)
+        commentEls.push(el)
+      }
+    })
+  }
 
   for (const cEl of commentEls) {
     const authorLink = cEl.querySelector<HTMLAnchorElement>('a[href*="/in/"]')
@@ -234,34 +270,38 @@ function extractComments(
       firstText(
         [
           '.comments-comment-meta__description-title',
+          '.comments-comment-meta__name-text',
           '.comments-post-meta__name-text',
           '.comments-comment-item__author-actor-name',
+          '.comments-comment-meta__actor-link span[aria-hidden="true"]',
           '.comments-comment-meta__actor-link span',
         ],
         cEl,
       ) ?? text(authorLink)
 
-    const headline = firstText(
-      [
-        '.comments-comment-meta__description-subtitle',
-        '.comments-post-meta__headline',
-      ],
-      cEl,
-    ) ?? undefined
+    const headline =
+      firstText(
+        [
+          '.comments-comment-meta__description-subtitle',
+          '.comments-comment-meta__headline',
+          '.comments-post-meta__headline',
+        ],
+        cEl,
+      ) ?? undefined
 
     const commentText = firstText(
       [
         '.comments-comment-item__main-content',
         '.comments-comment-content__commentary',
+        '.comments-comment-item-content-body',
         '.update-components-text',
+        '.feed-shared-text',
+        'span[dir="ltr"]',
       ],
       cEl,
     )
-    // No body → likely an unrendered placeholder or a reaction-only row. Skip.
     if (!commentText) continue
 
-    // Avoid capturing reply rows nested under another comment as if they were on the post.
-    // The post's `urn` is on `postEl`; the comment's data-urn refers to the comment itself.
     let engagedAt: string | undefined
     const timeEl = cEl.querySelector<HTMLElement>('time[datetime]')
     if (timeEl) {

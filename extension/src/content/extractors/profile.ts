@@ -18,6 +18,7 @@ export function extractProfile(): ScrapedPersonInput | null {
   const headline = extractHeadline(fullName)
   const company = extractCompany()
   const isConnection = detectFirstDegree()
+  const bio = extractAbout()
 
   return {
     profileUrl,
@@ -25,6 +26,7 @@ export function extractProfile(): ScrapedPersonInput | null {
     headline: headline ?? undefined,
     company: company ?? undefined,
     isConnection,
+    bio: bio ?? undefined,
     raw: {
       capturedAt: new Date().toISOString(),
       href: location.href,
@@ -84,6 +86,61 @@ function extractCompany(): string | null {
     if (t && t.length < 80) return t
   }
   return null
+}
+
+function extractAbout(): string | null {
+  // Strategy: find a <section> whose heading text is "About", then capture the long-form
+  // text within it. LinkedIn uses an aria-hidden span to hold the actual text (the visible
+  // copy) and a duplicate visually-hidden span for screen readers.
+
+  // 1. Direct selectors LinkedIn has used historically.
+  const direct = firstText(
+    [
+      'section[data-section="summary"] .display-flex .full-width span[aria-hidden="true"]',
+      'section[data-section="summary"] .inline-show-more-text',
+      'section#about ~ * .inline-show-more-text',
+      '[data-view-name="profile-card"] .inline-show-more-text',
+    ],
+  )
+  if (direct && direct.length > 30) return cleanupBio(direct)
+
+  // 2. Find any <section> whose first h2/h3/heading text === "About"
+  const sections = Array.from(document.querySelectorAll<HTMLElement>('main section, main div[data-view-name="profile-card"]'))
+  for (const section of sections) {
+    const heading = section.querySelector('h2, h3, [aria-level]')
+    if (!heading) continue
+    const headingText = text(heading).toLowerCase()
+    if (headingText !== 'about') continue
+
+    // Look for the most likely body container inside this section.
+    const body = firstText(
+      [
+        '.inline-show-more-text',
+        '.display-flex .full-width span[aria-hidden="true"]',
+        'span[aria-hidden="true"]',
+        '.pv-shared-text-with-see-more',
+      ],
+      section,
+    )
+    if (body && body.length > 30) return cleanupBio(body)
+
+    // Fallback: take the whole section's text, strip the heading.
+    const wholeText = text(section)
+    if (wholeText.length > 30) {
+      const stripped = wholeText.replace(/^about\s*/i, '').trim()
+      if (stripped.length > 30) return cleanupBio(stripped)
+    }
+  }
+
+  return null
+}
+
+function cleanupBio(s: string): string {
+  // LinkedIn's "see more" toggle: text often ends with "…see more" or "see more". Strip.
+  return s
+    .replace(/\s*…?\s*see more$/i, '')
+    .replace(/\s*\.\.\.see more$/i, '')
+    .trim()
 }
 
 function detectFirstDegree(): boolean {

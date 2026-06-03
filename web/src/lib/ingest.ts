@@ -134,6 +134,7 @@ async function syncSelfProfile(supabase: Supa, userId: string, self: ScrapedPers
   }
   if (self.fullName) patch.display_name = self.fullName
   if (self.headline) patch.headline = self.headline
+  if (self.bio) patch.bio = self.bio
 
   const { error } = await supabase.from('profile').upsert(patch, { onConflict: 'user_id' })
   if (error) throw new Error(`profile upsert (self) failed: ${error.message}`)
@@ -176,6 +177,7 @@ async function upsertPeople(
       full_name: p.fullName ?? null,
       headline: p.headline ?? null,
       company: p.company ?? null,
+      bio: p.bio ?? null,
       is_connection: p.isConnection ?? false,
       last_seen_at: now,
       raw: p.raw ?? null,

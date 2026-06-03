@@ -11,6 +11,8 @@ export interface ScrapedPersonInput {
   headline?: string
   company?: string
   isConnection?: boolean
+  // LinkedIn "About" section text. Single richest voice signal — captured on profile pages.
+  bio?: string
   raw?: unknown
 }
 
