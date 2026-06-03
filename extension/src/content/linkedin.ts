@@ -14,6 +14,22 @@ import { extractProfile } from './extractors/profile'
 import { scanPosts } from './extractors/posts'
 import { onUrlChange } from './observer'
 import { activityPageSlug, canonicalProfileUrl, isProfilePage, waitFor } from './util'
+import { captureDom } from './dom-capture'
+
+// Content-script message listener — handles requests sent from background
+// (which in turn relays popup requests targeted at this tab).
+chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
+  if (msg?.type === 'capture-dom-request') {
+    try {
+      const dom = captureDom({ maxNodes: msg.maxNodes ?? 8000, maxDepth: msg.maxDepth ?? 50 })
+      sendResponse({ ok: true, dom, url: location.href })
+    } catch (err) {
+      sendResponse({ ok: false, error: (err as Error).message })
+    }
+    return true
+  }
+  return false
+})
 
 let postsObserver: MutationObserver | null = null
 

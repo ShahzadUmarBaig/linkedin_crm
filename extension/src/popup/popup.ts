@@ -84,5 +84,30 @@ $<HTMLButtonElement>('clear').addEventListener('click', async () => {
   refreshStats()
 })
 
+$<HTMLButtonElement>('copyDom').addEventListener('click', async () => {
+  setStatus('Capturing DOM…', null)
+  const res = await chrome.runtime.sendMessage({ type: 'capture-dom' })
+  if (!res?.ok) {
+    setStatus(res?.error ?? 'Capture failed.', 'err')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(res.dom)
+    const kb = Math.round(res.dom.length / 1024)
+    setStatus(`Copied ${kb} KB to clipboard from ${shortHost(res.url)}.`, 'ok')
+  } catch (err) {
+    setStatus(`Captured but clipboard write failed: ${(err as Error).message}`, 'err')
+  }
+})
+
+function shortHost(url: string): string {
+  try {
+    const u = new URL(url)
+    return u.pathname.length > 30 ? u.pathname.slice(0, 30) + '…' : u.pathname
+  } catch {
+    return url
+  }
+}
+
 loadConfig()
 refreshStats()
