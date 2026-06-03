@@ -4,6 +4,12 @@
 export type ScrapedMediaType = 'text' | 'image' | 'video' | 'article' | 'poll' | 'document'
 export type ScrapedEngagementType = 'reaction' | 'comment' | 'repost'
 
+export interface ScrapedFeaturedItem {
+  title: string
+  url?: string
+  kind?: string  // 'link' | 'post' | 'article' | inferred from URL/context
+}
+
 export interface ScrapedPersonInput {
   linkedinUrn?: string
   profileUrl?: string
@@ -13,6 +19,14 @@ export interface ScrapedPersonInput {
   isConnection?: boolean
   // LinkedIn "About" section text. Single richest voice signal — captured on profile pages.
   bio?: string
+  // Topcard data
+  location?: string
+  followerCount?: number
+  connectionCount?: number
+  // About-adjacent enrichment
+  topSkills?: string[]      // ['Product Management', 'SaaS', ...]
+  services?: string[]       // ['Mobile App Dev', 'SaaS Dev', ...]
+  featured?: ScrapedFeaturedItem[]  // self-curated highlights
   raw?: unknown
 }
 

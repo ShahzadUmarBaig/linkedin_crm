@@ -10,7 +10,7 @@ import {
   recordPerson,
   recordSelfProfile,
 } from '../lib/buffer'
-import { extractProfile } from './extractors/profile'
+import { extractProfile, isOwnProfilePage } from './extractors/profile'
 import { scanPosts } from './extractors/posts'
 import { onUrlChange } from './observer'
 import { activityPageSlug, canonicalProfileUrl, isProfilePage, waitFor } from './util'
@@ -36,16 +36,19 @@ let postsObserver: MutationObserver | null = null
 async function runExtractors() {
   await recordPage(location.href)
 
-  // Profile pages — capture the topcard. Route to selfProfile or people based on slug match.
+  // Profile pages — capture the topcard. Route to selfProfile or people based on DOM signal
+  // (presence of "Edit ..." links that only appear on your own profile). This is more reliable
+  // than slug matching and means no configuration is required.
   if (isProfilePage()) {
     const person = await waitFor(() => extractProfile(), { timeoutMs: 8000 })
     if (person) {
+      // Fall back to the configured slug if for any reason DOM detection fails.
       const config = await getConfig()
       const selfSlug = config.selfLinkedinSlug?.trim() || null
-      const ownCanonical = selfSlug
-        ? `https://www.linkedin.com/in/${selfSlug}/`
-        : null
-      const isSelf = ownCanonical !== null && canonicalProfileUrl(location.href) === ownCanonical
+      const slugMatch = selfSlug
+        ? canonicalProfileUrl(location.href) === `https://www.linkedin.com/in/${selfSlug}/`
+        : false
+      const isSelf = isOwnProfilePage() || slugMatch
 
       if (isSelf) {
         await recordSelfProfile(person)

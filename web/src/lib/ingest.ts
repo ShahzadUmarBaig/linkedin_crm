@@ -135,6 +135,12 @@ async function syncSelfProfile(supabase: Supa, userId: string, self: ScrapedPers
   if (self.fullName) patch.display_name = self.fullName
   if (self.headline) patch.headline = self.headline
   if (self.bio) patch.bio = self.bio
+  if (self.location) patch.location = self.location
+  if (typeof self.followerCount === 'number') patch.follower_count = self.followerCount
+  if (typeof self.connectionCount === 'number') patch.connection_count = self.connectionCount
+  if (self.topSkills && self.topSkills.length > 0) patch.top_skills = self.topSkills
+  if (self.services && self.services.length > 0) patch.services = self.services
+  if (self.featured && self.featured.length > 0) patch.featured = self.featured
 
   const { error } = await supabase.from('profile').upsert(patch, { onConflict: 'user_id' })
   if (error) throw new Error(`profile upsert (self) failed: ${error.message}`)
@@ -178,6 +184,12 @@ async function upsertPeople(
       headline: p.headline ?? null,
       company: p.company ?? null,
       bio: p.bio ?? null,
+      location: p.location ?? null,
+      follower_count: p.followerCount ?? null,
+      connection_count: p.connectionCount ?? null,
+      top_skills: p.topSkills ?? null,
+      services: p.services ?? null,
+      featured: p.featured ?? null,
       is_connection: p.isConnection ?? false,
       last_seen_at: now,
       raw: p.raw ?? null,

@@ -10,12 +10,24 @@ export interface Pillar {
   description: string
 }
 
+export interface FeaturedItem {
+  title: string
+  url?: string
+  kind?: string
+}
+
 export interface ProfileRow {
   user_id: string
   linkedin_url: string | null
   display_name: string | null
   headline: string | null
   bio: string | null
+  location: string | null
+  follower_count: number | null
+  connection_count: number | null
+  top_skills: string[] | null
+  services: string[] | null
+  featured: FeaturedItem[]
   niche: string | null
   audience: string | null
   tone: string | null
@@ -38,6 +50,7 @@ export async function loadProfile(userId: string): Promise<ProfileRow | null> {
   return {
     ...data,
     pillars: (data.pillars ?? []) as Pillar[],
+    featured: (data.featured ?? []) as FeaturedItem[],
   } as ProfileRow
 }
 
@@ -46,6 +59,9 @@ export interface ProfileUpdate {
   displayName?: string | null
   headline?: string | null
   bio?: string | null
+  location?: string | null
+  followerCount?: number | null
+  connectionCount?: number | null
   niche?: string | null
   audience?: string | null
   tone?: string | null
@@ -60,6 +76,9 @@ export async function saveProfile(userId: string, update: ProfileUpdate): Promis
   if (update.displayName !== undefined) patch.display_name = update.displayName
   if (update.headline !== undefined) patch.headline = update.headline
   if (update.bio !== undefined) patch.bio = update.bio
+  if (update.location !== undefined) patch.location = update.location
+  if (update.followerCount !== undefined) patch.follower_count = update.followerCount
+  if (update.connectionCount !== undefined) patch.connection_count = update.connectionCount
   if (update.niche !== undefined) patch.niche = update.niche
   if (update.audience !== undefined) patch.audience = update.audience
   if (update.tone !== undefined) patch.tone = update.tone
@@ -116,8 +135,9 @@ export async function inferProfileFromPosts(userId: string): Promise<InferProfil
   // Use service client to bypass RLS for a server-side read of user's own data.
   const supabase = createSupabaseServiceClient()
 
-  // Pull the user's own About-section bio (scraped from LinkedIn topcard) — this is the
-  // single richest voice signal available, often clearer than 50 posts of evidence.
+  // Pull the user's full LinkedIn ground truth — bio, headline, skills, services, featured.
+  // These are written by the user themselves on LinkedIn, so they're far more reliable voice
+  // and positioning signal than inferring from posts alone.
   const [{ data: posts, error }, { data: prof }] = await Promise.all([
     supabase
       .from('scraped_posts')
@@ -126,7 +146,11 @@ export async function inferProfileFromPosts(userId: string): Promise<InferProfil
       .not('body', 'is', null)
       .order('posted_at', { ascending: false, nullsFirst: false })
       .limit(50),
-    supabase.from('profile').select('bio, headline').eq('user_id', userId).maybeSingle(),
+    supabase
+      .from('profile')
+      .select('bio, headline, location, top_skills, services, featured, follower_count')
+      .eq('user_id', userId)
+      .maybeSingle(),
   ])
 
   if (error) throw new Error(`failed to read scraped_posts: ${error.message}`)
@@ -136,7 +160,15 @@ export async function inferProfileFromPosts(userId: string): Promise<InferProfil
 
   const userPrompt = buildUserPrompt(
     posts.map((p) => ({ body: p.body ?? '', postedAt: p.posted_at, media: p.media })),
-    { bio: prof?.bio ?? null, headline: prof?.headline ?? null },
+    {
+      bio: prof?.bio ?? null,
+      headline: prof?.headline ?? null,
+      location: prof?.location ?? null,
+      topSkills: (prof?.top_skills ?? []) as string[],
+      services: (prof?.services ?? []) as string[],
+      featured: (prof?.featured ?? []) as FeaturedItem[],
+      followerCount: prof?.follower_count ?? null,
+    },
   )
 
   const response = await generate({
@@ -177,14 +209,36 @@ export async function inferProfileFromPosts(userId: string): Promise<InferProfil
 
 function buildUserPrompt(
   posts: Array<{ body: string; postedAt: string | null; media: string | null }>,
-  ground: { bio: string | null; headline: string | null },
+  ground: {
+    bio: string | null
+    headline: string | null
+    location: string | null
+    topSkills: string[]
+    services: string[]
+    featured: FeaturedItem[]
+    followerCount: number | null
+  },
 ): string {
   const sections: string[] = []
 
-  if (ground.headline || ground.bio) {
+  const hasGround =
+    ground.headline ||
+    ground.bio ||
+    ground.topSkills.length > 0 ||
+    ground.services.length > 0 ||
+    ground.featured.length > 0
+  if (hasGround) {
     sections.push('GROUND TRUTH FROM USER\'S LINKEDIN PROFILE (weight this heavily — they wrote it deliberately):')
     if (ground.headline) sections.push(`Headline: ${ground.headline}`)
     if (ground.bio) sections.push(`About:\n${ground.bio}`)
+    if (ground.location) sections.push(`Location: ${ground.location}`)
+    if (ground.followerCount != null) sections.push(`Followers: ${ground.followerCount}`)
+    if (ground.topSkills.length > 0) sections.push(`Top skills: ${ground.topSkills.join(', ')}`)
+    if (ground.services.length > 0) sections.push(`Services offered: ${ground.services.join(', ')}`)
+    if (ground.featured.length > 0) {
+      sections.push(`Featured items (self-curated highlights):`)
+      for (const f of ground.featured) sections.push(`  - [${f.kind ?? 'item'}] ${f.title}`)
+    }
   }
 
   const postLines = posts.map((p, i) => {

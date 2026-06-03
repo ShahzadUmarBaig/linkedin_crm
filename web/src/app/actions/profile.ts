@@ -28,9 +28,15 @@ export async function updateProfile(formData: FormData): Promise<{ error?: strin
   const linkedinUrl = (formData.get('linkedinUrl') as string | null)?.trim() || null
   const displayName = (formData.get('displayName') as string | null)?.trim() || null
   const headline = (formData.get('headline') as string | null)?.trim() || null
+  const bio = (formData.get('bio') as string | null)?.trim() || null
+  const location = (formData.get('location') as string | null)?.trim() || null
   const niche = (formData.get('niche') as string | null)?.trim() || null
   const audience = (formData.get('audience') as string | null)?.trim() || null
   const tone = (formData.get('tone') as string | null)?.trim() || null
+  const followerCountRaw = formData.get('followerCount')
+  const followerCount = followerCountRaw ? Number(followerCountRaw) : undefined
+  const connectionCountRaw = formData.get('connectionCount')
+  const connectionCount = connectionCountRaw ? Number(connectionCountRaw) : undefined
   const postingFrequencyRaw = formData.get('postingFrequencyPerWeek')
   const postingFrequencyPerWeek = postingFrequencyRaw ? Number(postingFrequencyRaw) : undefined
 
@@ -56,6 +62,10 @@ export async function updateProfile(formData: FormData): Promise<{ error?: strin
     linkedinUrl,
     displayName,
     headline,
+    bio,
+    location,
+    followerCount,
+    connectionCount,
     niche,
     audience,
     tone,

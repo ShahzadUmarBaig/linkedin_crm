@@ -76,6 +76,32 @@ export function ProfileEditor({ initial }: Props) {
             <Field label="LinkedIn URL" name="linkedinUrl" defaultValue={initial?.linkedin_url ?? ''} placeholder="https://linkedin.com/in/you" />
           </div>
           <Field label="Headline" name="headline" defaultValue={initial?.headline ?? ''} />
+          <TextArea label="About / Bio" name="bio" defaultValue={initial?.bio ?? ''} rows={4} />
+          <div className="grid grid-cols-3 gap-3">
+            <Field label="Location" name="location" defaultValue={initial?.location ?? ''} />
+            <Field
+              label="Followers"
+              name="followerCount"
+              type="number"
+              defaultValue={initial?.follower_count != null ? String(initial.follower_count) : ''}
+            />
+            <Field
+              label="Connections"
+              name="connectionCount"
+              type="number"
+              defaultValue={initial?.connection_count != null ? String(initial.connection_count) : ''}
+            />
+          </div>
+        </section>
+
+        <section className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
+          <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-zinc-500">Scraped from LinkedIn</h2>
+          <p className="mb-3 text-xs text-zinc-500">
+            These come from your LinkedIn topcard on each scrape. Read-only — edit them on LinkedIn to change.
+          </p>
+          <ReadOnlyList label="Top skills" items={initial?.top_skills ?? []} />
+          <ReadOnlyList label="Services" items={initial?.services ?? []} />
+          <ReadOnlyFeatured items={initial?.featured ?? []} />
         </section>
 
         <section className="rounded-lg border border-zinc-200 bg-white p-6 dark:border-zinc-800 dark:bg-zinc-900">
@@ -156,6 +182,62 @@ export function ProfileEditor({ initial }: Props) {
   function updatePillar(i: number, p: Pillar) {
     setPillars(pillars.map((old, idx) => (idx === i ? p : old)))
   }
+}
+
+function ReadOnlyList({ label, items }: { label: string; items: string[] }) {
+  if (items.length === 0) {
+    return (
+      <div className="mb-3">
+        <div className="mb-1 text-xs font-medium text-zinc-500">{label}</div>
+        <div className="text-xs italic text-zinc-400">Not captured yet</div>
+      </div>
+    )
+  }
+  return (
+    <div className="mb-3">
+      <div className="mb-1 text-xs font-medium text-zinc-500">{label}</div>
+      <div className="flex flex-wrap gap-1.5">
+        {items.map((item, i) => (
+          <span
+            key={i}
+            className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+          >
+            {item}
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function ReadOnlyFeatured({ items }: { items: Array<{ title: string; url?: string; kind?: string }> }) {
+  if (items.length === 0) {
+    return (
+      <div className="mb-3">
+        <div className="mb-1 text-xs font-medium text-zinc-500">Featured</div>
+        <div className="text-xs italic text-zinc-400">Not captured yet</div>
+      </div>
+    )
+  }
+  return (
+    <div className="mb-3">
+      <div className="mb-1 text-xs font-medium text-zinc-500">Featured</div>
+      <ul className="space-y-1 text-xs">
+        {items.map((item, i) => (
+          <li key={i}>
+            {item.kind && <span className="mr-2 inline-block w-12 text-zinc-400">{item.kind}</span>}
+            {item.url ? (
+              <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline dark:text-blue-400">
+                {item.title}
+              </a>
+            ) : (
+              <span>{item.title}</span>
+            )}
+          </li>
+        ))}
+      </ul>
+    </div>
+  )
 }
 
 function Field({
