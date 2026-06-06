@@ -1,6 +1,7 @@
 // Content script entry point.
 // Passively observes the DOM. We never auto-scroll or auto-navigate.
 
+import type { ScrapedPersonInput } from '@crm/shared'
 import { getConfig } from '../lib/storage'
 import {
   recordEngagement,
@@ -36,35 +37,14 @@ let postsObserver: MutationObserver | null = null
 async function runExtractors() {
   await recordPage(location.href)
 
-  // Profile pages — capture the topcard. Route to selfProfile or people based on DOM signal
-  // (presence of "Edit ..." links that only appear on your own profile). This is more reliable
-  // than slug matching and means no configuration is required.
+  // Profile pages — capture the topcard immediately, then keep re-extracting as LinkedIn's
+  // server-driven UI streams in the About / Top skills / Services / Featured cards (these
+  // arrive a beat after the topcard). Route to selfProfile or people based on a DOM signal
+  // (presence of "Edit ..." links that only appear on your own profile).
   if (isProfilePage()) {
-    const person = await waitFor(() => extractProfile(), { timeoutMs: 8000 })
-    if (person) {
-      // Fall back to the configured slug if for any reason DOM detection fails.
-      const config = await getConfig()
-      const selfSlug = config.selfLinkedinSlug?.trim() || null
-      const slugMatch = selfSlug
-        ? canonicalProfileUrl(location.href) === `https://www.linkedin.com/in/${selfSlug}/`
-        : false
-      const isSelf = isOwnProfilePage() || slugMatch
-
-      if (isSelf) {
-        await recordSelfProfile(person)
-        console.log('[linkedin-crm] captured SELF profile', person.fullName)
-      } else {
-        await recordPerson(person)
-        console.log('[linkedin-crm] captured profile', person.fullName)
-      }
-      await chrome.storage.local.set({
-        lastCapture: {
-          kind: isSelf ? 'self-profile' : 'profile',
-          name: person.fullName,
-          at: new Date().toISOString(),
-        },
-      })
-    }
+    await startProfileCapture()
+  } else {
+    stopProfileCapture()
   }
 
   // Activity pages — capture posts visible now + as user scrolls.
@@ -74,6 +54,82 @@ async function runExtractors() {
   } else {
     stopPostsCapture()
   }
+}
+
+// ---------- profile capture ----------
+// LinkedIn streams profile sections progressively. extractProfile() returns as soon as the
+// name (topcard) exists, so a single-shot capture misses the later cards. We re-extract on an
+// interval for a bounded window and accumulate the richest snapshot per profile URL — merging
+// only non-empty fields so a transient sparse extraction can never wipe a field we already have.
+
+let profileTimer: ReturnType<typeof setInterval> | null = null
+const profileAccum: Record<string, ScrapedPersonInput> = {}
+
+function stopProfileCapture() {
+  if (profileTimer != null) {
+    clearInterval(profileTimer)
+    profileTimer = null
+  }
+}
+
+function mergePerson(prev: ScrapedPersonInput | undefined, next: ScrapedPersonInput): ScrapedPersonInput {
+  const out: Record<string, unknown> = { ...(prev ?? {}) }
+  for (const [k, v] of Object.entries(next)) {
+    if (v === undefined || v === null) continue
+    if (typeof v === 'string' && v.trim() === '') continue
+    if (Array.isArray(v) && v.length === 0) continue
+    out[k] = v
+  }
+  return out as ScrapedPersonInput
+}
+
+async function captureProfileOnce(): Promise<void> {
+  const person = extractProfile()
+  if (!person) return
+
+  const config = await getConfig()
+  const selfSlug = config.selfLinkedinSlug?.trim() || null
+  const slugMatch = selfSlug
+    ? canonicalProfileUrl(location.href) === `https://www.linkedin.com/in/${selfSlug}/`
+    : false
+  const isSelf = isOwnProfilePage() || slugMatch
+
+  const key = person.profileUrl ?? canonicalProfileUrl(location.href) ?? location.href
+  const merged = mergePerson(profileAccum[key], person)
+  profileAccum[key] = merged
+
+  if (isSelf) {
+    await recordSelfProfile(merged)
+  } else {
+    await recordPerson(merged)
+  }
+  await chrome.storage.local.set({
+    lastCapture: {
+      kind: isSelf ? 'self-profile' : 'profile',
+      name: merged.fullName,
+      at: new Date().toISOString(),
+    },
+  })
+}
+
+async function startProfileCapture() {
+  stopProfileCapture()
+
+  const first = await waitFor(() => extractProfile(), { timeoutMs: 8000 })
+  if (!first) return
+  await captureProfileOnce()
+
+  // Keep re-capturing for ~16s so streamed-in cards (About/skills/services/featured) are picked
+  // up. Stops early if the user navigates to a different profile.
+  const startedUrl = canonicalProfileUrl(location.href)
+  const deadline = Date.now() + 16000
+  profileTimer = setInterval(() => {
+    if (canonicalProfileUrl(location.href) !== startedUrl || Date.now() > deadline) {
+      stopProfileCapture()
+      return
+    }
+    void captureProfileOnce()
+  }, 1500)
 }
 
 async function startPostsCapture(ownerSlug: string) {
