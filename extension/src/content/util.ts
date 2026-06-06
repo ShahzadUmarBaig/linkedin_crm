@@ -59,6 +59,18 @@ export function isProfilePage(href: string = location.href): boolean {
   return canonicalProfileUrl(href) !== null
 }
 
+// True on the home feed (https://www.linkedin.com/feed/ or /feed), where other people's
+// posts stream in. This is the main inspiration-post source.
+export function isFeedPage(href: string = location.href): boolean {
+  try {
+    const url = new URL(href)
+    if (!/(^|\.)linkedin\.com$/.test(url.hostname)) return false
+    return /^\/feed\/?$/.test(url.pathname)
+  } catch {
+    return false
+  }
+}
+
 // Returns the LinkedIn slug whose activity page we're on, or null if not on one.
 // Matches /in/<slug>/recent-activity[/<tab>] — covers /all, /posts, /comments, etc.
 export function activityPageSlug(href: string = location.href): string | null {

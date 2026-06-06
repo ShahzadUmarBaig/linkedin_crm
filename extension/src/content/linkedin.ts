@@ -13,8 +13,9 @@ import {
 } from '../lib/buffer'
 import { extractProfile, isOwnProfilePage } from './extractors/profile'
 import { scanPosts } from './extractors/posts'
+import { scanFeed } from './extractors/feed'
 import { onUrlChange } from './observer'
-import { activityPageSlug, canonicalProfileUrl, isProfilePage, waitFor } from './util'
+import { activityPageSlug, canonicalProfileUrl, isFeedPage, isProfilePage, waitFor } from './util'
 import { captureDom } from './dom-capture'
 
 // Content-script message listener — handles requests sent from background
@@ -54,6 +55,62 @@ async function runExtractors() {
   } else {
     stopPostsCapture()
   }
+
+  // Home feed — capture other people's posts as inspiration, now + as the user scrolls.
+  if (isFeedPage()) {
+    await startFeedCapture()
+  } else {
+    stopFeedCapture()
+  }
+}
+
+// ---------- home feed capture ----------
+
+let feedObserver: MutationObserver | null = null
+
+function stopFeedCapture() {
+  if (feedObserver) {
+    feedObserver.disconnect()
+    feedObserver = null
+  }
+}
+
+async function startFeedCapture() {
+  const captureNow = async () => {
+    const captures = scanFeed()
+    if (captures.length === 0) return
+    for (const c of captures) {
+      if (c.author) await recordPerson(c.author)
+      await recordInspirationPost(c.inspirationPost)
+    }
+    await chrome.storage.local.set({
+      lastCapture: {
+        kind: 'feed',
+        name: `${captures.length} feed post${captures.length === 1 ? '' : 's'}`,
+        at: new Date().toISOString(),
+      },
+    })
+    console.log(`[linkedin-crm] captured ${captures.length} feed posts`)
+  }
+
+  await captureNow()
+
+  // Re-scan as the feed streams in on scroll. Throttle to avoid storming the buffer.
+  stopFeedCapture()
+  let scheduled = false
+  feedObserver = new MutationObserver(() => {
+    if (scheduled) return
+    scheduled = true
+    setTimeout(() => {
+      scheduled = false
+      if (!isFeedPage()) {
+        stopFeedCapture()
+        return
+      }
+      void captureNow()
+    }, 1500)
+  })
+  feedObserver.observe(document.body, { childList: true, subtree: true })
 }
 
 // ---------- profile capture ----------
