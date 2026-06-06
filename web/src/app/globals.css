@@ -2,35 +2,39 @@
 
 /* =========================================================================
    LinkedIn CRM — design system
-   Ported from docs/wireframe. Light theme, single restrained accent, plus
+   Ported from docs/wireframe. Dark theme, single restrained accent, plus
    two state tints: amber = "you act", cool grey = "AI did this".
    ========================================================================= */
 
 :root {
-  --bg: #f1f1f3;
-  --panel: #ffffff;
-  --panel-2: #fafafa;
-  --line: #d6d6db;
-  --line-strong: #bcbcc4;
-  --ink: #2a2a30;
-  --muted: #76767f;
-  --faint: #9a9aa3;
-  --skel: #e4e4e9;
-  --skel-2: #ededf1;
+  color-scheme: dark;
 
-  --accent: oklch(0.55 0.09 255);
-  --accent-soft: oklch(0.94 0.03 255);
-  --accent-line: #cdd6ef;
-  --human: oklch(0.62 0.11 65); /* "you do this" = amber */
-  --human-soft: oklch(0.95 0.04 75);
-  --human-line: #e6d4ba;
-  --auto: oklch(0.58 0.04 255); /* "AI did this" = cool grey */
-  --auto-soft: #f3f4f8;
-  --auto-line: #cfd2dd;
-  --good: oklch(0.6 0.08 150);
-  --good-soft: oklch(0.95 0.03 150);
-  --good-line: #bfe0cd;
-  --danger: oklch(0.55 0.15 25);
+  --bg: #0d0d10;
+  --panel: #16161b;
+  --panel-2: #1d1d23;
+  --line: #2a2a31;
+  --line-strong: #3a3a44;
+  --ink: #e9e9ee;
+  --muted: #9a9aa6;
+  --faint: #6c6c77;
+  --skel: #24242b;
+  --skel-2: #2c2c34;
+
+  --accent: oklch(0.72 0.12 255);
+  --accent-soft: oklch(0.32 0.06 262);
+  --accent-line: oklch(0.45 0.08 262);
+  --human: oklch(0.78 0.13 72); /* "you do this" = amber */
+  --human-soft: oklch(0.33 0.07 70);
+  --human-line: oklch(0.48 0.09 70);
+  --auto: oklch(0.72 0.03 262); /* "AI did this" = cool grey */
+  --auto-soft: #23242c;
+  --auto-line: #383a45;
+  --good: oklch(0.74 0.13 152);
+  --good-soft: oklch(0.32 0.06 152);
+  --good-line: oklch(0.46 0.08 152);
+  --danger: oklch(0.7 0.16 25);
+  --danger-soft: oklch(0.3 0.08 25);
+  --danger-line: oklch(0.45 0.1 25);
 
   --mono: var(--font-geist-mono), ui-monospace, "SF Mono", Menlo, Consolas, monospace;
   --sans: "Helvetica Neue", Helvetica, Arial, sans-serif;
@@ -75,7 +79,7 @@ body {
 .w95 { width: 95%; } .wfull { width: 100%; }
 
 .imgph {
-  background: repeating-linear-gradient(135deg, #e9e9ee 0 9px, #f1f1f5 9px 18px);
+  background: repeating-linear-gradient(135deg, #1b1b21 0 9px, #222229 9px 18px);
   border: 1px solid var(--line);
   border-radius: 6px;
   display: flex;
@@ -96,7 +100,7 @@ body {
   color: var(--muted);
   border: 1px dashed var(--line-strong);
   border-radius: 6px;
-  background: repeating-linear-gradient(135deg, #fff 0 6px, #fbfbfc 6px 12px);
+  background: repeating-linear-gradient(135deg, #141419 0 6px, #17171d 6px 12px);
   padding: 8px 10px;
 }
 .note.solid {
@@ -161,9 +165,9 @@ body {
 .btn:disabled { opacity: 0.5; cursor: default; }
 .btn:disabled:hover { border-color: var(--line-strong); }
 .btn.sm { font-size: 12px; padding: 6px 10px; }
-.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #14141a; }
 .btn.primary:hover { filter: brightness(0.95); border-color: var(--accent); }
-.btn.human { background: var(--human); border-color: var(--human); color: #fff; }
+.btn.human { background: var(--human); border-color: var(--human); color: #14141a; }
 .btn.human:hover { filter: brightness(0.96); border-color: var(--human); }
 .btn.ghost { background: transparent; border-color: var(--line); }
 .btn.danger { color: var(--danger); border-color: var(--line); }
@@ -263,7 +267,7 @@ body {
 /* ---------- app shell ---------- */
 .app { display: grid; grid-template-columns: 230px 1fr; min-height: 100vh; }
 .side {
-  background: #fff;
+  background: var(--panel);
   border-right: 1px solid var(--line);
   padding: 18px 14px;
   position: sticky;
@@ -316,7 +320,7 @@ body {
   font-family: var(--mono);
   font-size: 10px;
   background: var(--human);
-  color: #fff;
+  color: #14141a;
   border-radius: 999px;
   padding: 1px 6px;
   min-width: 18px;
@@ -335,7 +339,7 @@ body {
   border: none;
   transition: background 0.15s ease;
 }
-.switch i { position: absolute; top: 2px; right: 2px; width: 15px; height: 15px; border-radius: 50%; background: #fff; transition: all 0.15s ease; }
+.switch i { position: absolute; top: 2px; right: 2px; width: 15px; height: 15px; border-radius: 50%; background: #f5f5f8; transition: all 0.15s ease; }
 .switch.off { background: var(--line-strong); }
 .switch.off i { right: auto; left: 2px; }
 
@@ -345,7 +349,7 @@ body {
   position: sticky;
   top: 0;
   z-index: 5;
-  background: rgba(241, 241, 243, 0.86);
+  background: rgba(13, 13, 16, 0.8);
   backdrop-filter: blur(6px);
   border-bottom: 1px solid var(--line);
   padding: 14px 28px;
@@ -381,7 +385,7 @@ body {
   height: 38px;
   border-radius: 10px;
   border: 1.5px solid var(--line-strong);
-  background: #fff;
+  background: var(--panel);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -414,7 +418,7 @@ body {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 14px;
-  background: #fff;
+  background: var(--panel);
 }
 .todo .num {
   width: 30px;
@@ -435,7 +439,7 @@ body {
 .idea {
   border: 1px solid var(--line);
   border-radius: 10px;
-  background: #fff;
+  background: var(--panel);
   padding: 14px;
   display: flex;
   flex-direction: column;
@@ -453,12 +457,12 @@ body {
 .stepper .s { display: flex; align-items: center; gap: 8px; color: var(--faint); }
 .stepper .s .n { width: 22px; height: 22px; border-radius: 50%; border: 1.5px solid var(--line-strong); display: flex; align-items: center; justify-content: center; font-size: 11px; }
 .stepper .s.on { color: var(--ink); }
-.stepper .s.on .n { border-color: var(--accent); background: var(--accent); color: #fff; }
-.stepper .s.done .n { border-color: var(--good); background: var(--good); color: #fff; }
+.stepper .s.on .n { border-color: var(--accent); background: var(--accent); color: #14141a; }
+.stepper .s.done .n { border-color: var(--good); background: var(--good); color: #14141a; }
 .stepper .sep { width: 26px; height: 1.5px; background: var(--line); }
 
 /* ---------- linkedin post preview ---------- */
-.li-card { border: 1px solid var(--line); border-radius: 10px; background: #fff; overflow: hidden; }
+.li-card { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); overflow: hidden; }
 .li-card .hd { display: flex; gap: 10px; align-items: center; padding: 14px; }
 .li-card .body { padding: 0 14px 12px; }
 .li-card .body p { margin: 0 0 8px; font-size: 13px; white-space: pre-wrap; }
@@ -468,7 +472,7 @@ body {
 /* ---------- calendar ---------- */
 .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
 .cal .dow { font-family: var(--mono); font-size: 10px; letter-spacing: 0.05em; text-transform: uppercase; color: var(--faint); text-align: center; padding-bottom: 2px; }
-.cal .day { border: 1px solid var(--line); border-radius: 7px; min-height: 92px; padding: 7px; background: #fff; display: flex; flex-direction: column; gap: 5px; }
+.cal .day { border: 1px solid var(--line); border-radius: 7px; min-height: 92px; padding: 7px; background: var(--panel); display: flex; flex-direction: column; gap: 5px; }
 .cal .day.dim { background: var(--panel-2); color: var(--faint); }
 .cal .day.today { outline: 2px solid var(--human); outline-offset: -1px; }
 .cal .dn { font-size: 11px; color: var(--muted); font-family: var(--mono); }
@@ -479,7 +483,7 @@ body {
 .ev.you { background: var(--human-soft); border-color: var(--human-line); color: var(--human); }
 
 /* ---------- analytics ---------- */
-.stat { border: 1px solid var(--line); border-radius: 10px; background: #fff; padding: 16px; }
+.stat { border: 1px solid var(--line); border-radius: 10px; background: var(--panel); padding: 16px; }
 .stat .big { font-size: 26px; font-weight: 700; letter-spacing: -0.01em; }
 .stat .delta { font-family: var(--mono); font-size: 11px; color: var(--good); }
 .stat .delta.down { color: var(--danger); }
@@ -487,7 +491,7 @@ body {
   height: 170px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: linear-gradient(to top, #fafafa, transparent),
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.03), transparent),
     repeating-linear-gradient(to right, transparent 0 calc(100% / 7 - 1px), var(--line) calc(100% / 7 - 1px) calc(100% / 7));
   position: relative;
   overflow: hidden;
@@ -504,7 +508,7 @@ body {
 /* ---------- insight ---------- */
 .insight { border: 1px solid var(--good-line); background: var(--good-soft); border-radius: 10px; padding: 14px; display: flex; gap: 12px; align-items: flex-start; }
 .insight.accent { border-color: var(--accent-line); background: var(--accent-soft); }
-.insight .ic { width: 26px; height: 26px; border-radius: 7px; background: #fff; border: 1px solid var(--good-line); flex: none; }
+.insight .ic { width: 26px; height: 26px; border-radius: 7px; background: var(--panel); border: 1px solid var(--good-line); flex: none; }
 .insight.accent .ic { border-color: var(--accent-line); }
 
 .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 11px; color: var(--muted); font-family: var(--mono); }
@@ -514,13 +518,13 @@ body {
 /* ---------- variant tabs / view toggles ---------- */
 .vtabs { display: inline-flex; gap: 4px; background: var(--panel-2); border: 1px solid var(--line); border-radius: 9px; padding: 4px; }
 .vtab { font-family: var(--mono); font-size: 11px; letter-spacing: 0.03em; padding: 6px 12px; border-radius: 6px; cursor: pointer; color: var(--muted); border: 1px solid transparent; white-space: nowrap; background: transparent; }
-.vtab.active { background: #fff; color: var(--ink); border-color: var(--line); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); }
+.vtab.active { background: var(--panel); color: var(--ink); border-color: var(--line); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04); }
 
 /* ---------- forms ---------- */
 .field {
   width: 100%;
   border: 1px solid var(--line-strong);
-  background: #fff;
+  background: var(--panel);
   border-radius: 7px;
   padding: 8px 11px;
   font-family: var(--sans);
@@ -538,7 +542,7 @@ textarea.field { resize: vertical; line-height: 1.5; }
   height: 34px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fff;
+  background: var(--panel);
   display: flex;
   align-items: center;
   padding: 0 10px;
@@ -549,4 +553,4 @@ textarea.field { resize: vertical; line-height: 1.5; }
 
 .banner { border-radius: 8px; padding: 10px 12px; font-size: 13px; }
 .banner.ok { background: var(--good-soft); color: var(--good); border: 1px solid var(--good-line); }
-.banner.err { background: oklch(0.95 0.04 25); color: var(--danger); border: 1px solid oklch(0.85 0.08 25); }
+.banner.err { background: var(--danger-soft); color: var(--danger); border: 1px solid var(--danger-line); }

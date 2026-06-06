@@ -7,10 +7,16 @@ export default async function LoginPage() {
   if (user) redirect('/dashboard')
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-zinc-50 p-6 dark:bg-zinc-950">
-      <div className="w-full max-w-sm rounded-lg border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-900">
-        <h1 className="mb-1 text-xl font-semibold tracking-tight">LinkedIn CRM</h1>
-        <p className="mb-6 text-sm text-zinc-500">Sign in to continue.</p>
+    <main style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+      <div className="box pad-lg" style={{ width: '100%', maxWidth: 360 }}>
+        <div className="row gap10 center" style={{ marginBottom: 16 }}>
+          <div style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--accent)' }} />
+          <div>
+            <div style={{ fontWeight: 700, fontSize: 16 }}>LinkedIn CRM</div>
+            <span className="eyebrow" style={{ fontSize: 9 }}>content engine</span>
+          </div>
+        </div>
+        <p style={{ fontSize: 13, color: 'var(--muted)', margin: '0 0 18px' }}>Sign in to continue.</p>
         <LoginForm />
       </div>
     </main>
