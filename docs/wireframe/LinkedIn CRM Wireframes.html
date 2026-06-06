@@ -1,0 +1,969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>LinkedIn CRM — Wireframes</title>
+<style>
+  :root{
+    --bg:#f1f1f3;
+    --panel:#ffffff;
+    --panel-2:#fafafa;
+    --line:#d6d6db;
+    --line-strong:#bcbcc4;
+    --ink:#2a2a30;
+    --muted:#76767f;
+    --faint:#9a9aa3;
+    --skel:#e4e4e9;
+    --skel-2:#ededf1;
+    /* one restrained accent + two state tints, low chroma for the grey-box look */
+    --accent:oklch(0.55 0.09 255);
+    --accent-soft:oklch(0.94 0.03 255);
+    --human:oklch(0.62 0.11 65);      /* "you do this" = amber */
+    --human-soft:oklch(0.95 0.04 75);
+    --auto:oklch(0.58 0.04 255);       /* "AI did this" = cool grey */
+    --good:oklch(0.6 0.08 150);
+    --good-soft:oklch(0.95 0.03 150);
+    --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+    --sans:"Helvetica Neue",Helvetica,Arial,sans-serif;
+    --r:9px;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0}
+  body{
+    font-family:var(--sans);
+    background:var(--bg);
+    color:var(--ink);
+    font-size:14px;
+    line-height:1.45;
+    -webkit-font-smoothing:antialiased;
+  }
+  /* ---------- wireframe primitives ---------- */
+  .l{display:block;height:9px;background:var(--skel);border-radius:3px}
+  .l.dk{background:var(--skel-2);filter:brightness(0.92)}
+  .l+.l{margin-top:7px}
+  .w20{width:20%}.w30{width:30%}.w40{width:40%}.w50{width:50%}.w55{width:55%}
+  .w60{width:60%}.w65{width:65%}.w70{width:70%}.w75{width:75%}.w80{width:80%}
+  .w85{width:85%}.w90{width:90%}.w95{width:95%}.wfull{width:100%}
+  .imgph{
+    background:
+      repeating-linear-gradient(135deg,#e9e9ee 0 9px,#f1f1f5 9px 18px);
+    border:1px solid var(--line);
+    border-radius:6px;
+    display:flex;align-items:center;justify-content:center;
+    color:var(--faint);
+    font-family:var(--mono);font-size:11px;letter-spacing:.04em;
+    text-align:center;padding:8px;
+  }
+  .note{
+    font-family:var(--mono);font-size:11px;line-height:1.5;
+    color:var(--muted);
+    border:1px dashed var(--line-strong);
+    border-radius:6px;
+    background:repeating-linear-gradient(135deg,#fff 0 6px,#fbfbfc 6px 12px);
+    padding:8px 10px;
+  }
+  .note b{color:var(--accent);font-weight:600}
+  /* tags */
+  .tag{display:inline-flex;align-items:center;gap:5px;font-family:var(--mono);
+    font-size:10px;letter-spacing:.05em;text-transform:uppercase;
+    padding:3px 7px;border-radius:999px;border:1px solid var(--line);
+    background:var(--panel-2);color:var(--muted);white-space:nowrap}
+  .tag .dot{width:6px;height:6px;border-radius:50%;background:var(--faint)}
+  .tag.auto{color:var(--auto);border-color:#cfd2dd;background:#f3f4f8}
+  .tag.auto .dot{background:var(--auto)}
+  .tag.human{color:var(--human);border-color:#e6d4ba;background:var(--human-soft)}
+  .tag.human .dot{background:var(--human)}
+  .tag.good{color:var(--good);border-color:#bfe0cd;background:var(--good-soft)}
+  .tag.good .dot{background:var(--good)}
+  /* buttons */
+  .btn{font-family:var(--sans);font-size:13px;border:1px solid var(--line-strong);
+    background:var(--panel);color:var(--ink);border-radius:7px;padding:8px 13px;
+    cursor:pointer;display:inline-flex;align-items:center;gap:7px;line-height:1}
+  .btn:hover{border-color:var(--ink)}
+  .btn.sm{font-size:12px;padding:6px 10px}
+  .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+  .btn.primary:hover{filter:brightness(0.95)}
+  .btn.human{background:var(--human);border-color:var(--human);color:#fff}
+  .btn.human:hover{filter:brightness(0.96)}
+  .btn.ghost{background:transparent;border-color:var(--line)}
+  .ico{width:14px;height:14px;border:1.5px solid currentColor;border-radius:4px;display:inline-block;opacity:.7}
+  .ico.c{border-radius:50%}
+  /* cards */
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:var(--r)}
+  .pad{padding:16px}
+  .pad-lg{padding:20px}
+  h-r{display:block}
+  .eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.08em;
+    text-transform:uppercase;color:var(--faint)}
+  .h-sec{font-size:13px;font-weight:700;letter-spacing:.01em}
+  .stack{display:flex;flex-direction:column}
+  .row{display:flex;align-items:center}
+  .gap6{gap:6px}.gap8{gap:8px}.gap10{gap:10px}.gap12{gap:12px}.gap16{gap:16px}.gap20{gap:20px}
+  .between{justify-content:space-between}
+  .center{align-items:center}
+  .wrap{flex-wrap:wrap}
+  .grow{flex:1}
+  .mt8{margin-top:8px}.mt12{margin-top:12px}.mt16{margin-top:16px}.mt20{margin-top:20px}.mt24{margin-top:24px}
+  .avatar{width:34px;height:34px;border-radius:50%;background:var(--skel);
+    border:1px solid var(--line);flex:none}
+  .avatar.sm{width:26px;height:26px}
+  .chip{font-size:12px;border:1px solid var(--line);background:var(--panel-2);
+    border-radius:999px;padding:5px 11px;color:var(--ink);display:inline-flex;
+    align-items:center;gap:7px;white-space:nowrap}
+  .chip .bar{width:34px;height:6px;border-radius:3px;background:var(--skel);position:relative;overflow:hidden}
+  .chip .bar i{position:absolute;left:0;top:0;bottom:0;background:var(--accent);opacity:.55}
+  .divider{height:1px;background:var(--line);margin:14px 0}
+  /* ---------- app shell ---------- */
+  .app{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
+  .side{background:#fff;border-right:1px solid var(--line);
+    padding:18px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;gap:4px}
+  .brand{display:flex;align-items:center;gap:10px;padding:4px 8px 16px}
+  .brand .mark{width:30px;height:30px;border-radius:8px;background:var(--accent);flex:none}
+  .brand .nm{font-weight:700;font-size:15px}
+  .brand .nm small{display:block;font-family:var(--mono);font-size:9px;letter-spacing:.1em;
+    color:var(--faint);text-transform:uppercase;font-weight:400;margin-top:2px}
+  .navlbl{font-family:var(--mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--faint);padding:14px 10px 6px}
+  .nav{display:flex;align-items:center;gap:10px;padding:9px 10px;border-radius:8px;
+    color:var(--muted);cursor:pointer;font-size:13.5px;font-weight:500;border:1px solid transparent}
+  .nav:hover{background:var(--panel-2)}
+  .nav .ni{width:16px;height:16px;border:1.5px solid currentColor;border-radius:4px;opacity:.6;flex:none}
+  .nav .ni.c{border-radius:50%}
+  .nav.active{background:var(--accent-soft);color:var(--accent);border-color:#cdd6ef}
+  .nav .cnt{margin-left:auto;font-family:var(--mono);font-size:10px;background:var(--human);
+    color:#fff;border-radius:999px;padding:1px 6px;min-width:18px;text-align:center}
+  .autopill{margin-top:auto;border:1px solid var(--line);border-radius:9px;padding:11px;background:var(--panel-2)}
+  .autopill .row{justify-content:space-between}
+  .switch{width:34px;height:19px;border-radius:999px;background:var(--good);position:relative;flex:none}
+  .switch i{position:absolute;top:2px;right:2px;width:15px;height:15px;border-radius:50%;background:#fff}
+  /* main */
+  .main{min-width:0}
+  .topbar{position:sticky;top:0;z-index:5;background:rgba(241,241,243,.86);
+    backdrop-filter:blur(6px);border-bottom:1px solid var(--line);
+    padding:14px 28px;display:flex;align-items:center;gap:16px}
+  .topbar .title{font-size:18px;font-weight:700}
+  .topbar .sub{font-family:var(--mono);font-size:11px;color:var(--faint)}
+  .search{margin-left:auto;width:230px;height:34px;border:1px solid var(--line);border-radius:8px;
+    background:#fff;display:flex;align-items:center;padding:0 10px;color:var(--faint);
+    font-size:12px;gap:8px}
+  .content{padding:24px 28px 60px;max-width:1180px}
+  .screen{display:none}
+  .screen.active{display:block}
+  /* variant tabs */
+  .vtabs{display:inline-flex;gap:4px;background:var(--panel-2);border:1px solid var(--line);
+    border-radius:9px;padding:4px}
+  .vtab{font-family:var(--mono);font-size:11px;letter-spacing:.03em;padding:6px 12px;border-radius:6px;
+    cursor:pointer;color:var(--muted);border:1px solid transparent;white-space:nowrap}
+  .vtab.active{background:#fff;color:var(--ink);border-color:var(--line);box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .variant{display:none}
+  .variant.active{display:block}
+  /* grids */
+  .g2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .g3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px}
+  .g-main{display:grid;grid-template-columns:1.6fr 1fr;gap:16px}
+  .g-ideas{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
+  @media(max-width:1100px){.g-ideas{grid-template-columns:repeat(2,1fr)}.g-main{grid-template-columns:1fr}}
+  /* pipeline */
+  .pipe{display:flex;align-items:stretch;gap:0;overflow-x:auto;padding:4px 0}
+  .pstep{flex:1;min-width:96px;text-align:center;position:relative;padding:0 6px}
+  .pstep .nodewrap{display:flex;align-items:center;justify-content:center;position:relative;height:42px}
+  .pstep .node{width:38px;height:38px;border-radius:10px;border:1.5px solid var(--line-strong);
+    background:#fff;display:flex;align-items:center;justify-content:center;z-index:2}
+  .pstep .node .gi{width:15px;height:15px;border:1.5px solid var(--auto);border-radius:4px;opacity:.7}
+  .pstep.human .node{border-color:var(--human);background:var(--human-soft);box-shadow:0 0 0 4px var(--human-soft)}
+  .pstep.human .node .gi{border-color:var(--human);border-radius:50%}
+  .pstep:not(:last-child) .nodewrap::after{content:"";position:absolute;left:50%;right:-50%;top:50%;
+    height:1.5px;background:var(--line);z-index:1}
+  .pstep .plbl{font-size:11px;margin-top:7px;font-weight:600}
+  .pstep .pmeta{font-family:var(--mono);font-size:9px;color:var(--faint);margin-top:2px;text-transform:uppercase;letter-spacing:.04em}
+  .pstep.human .plbl{color:var(--human)}
+  /* todo cards */
+  .todo{display:flex;gap:14px;align-items:center;border:1px solid var(--line);border-radius:10px;
+    padding:14px;background:#fff}
+  .todo .num{width:30px;height:30px;border-radius:8px;background:var(--human-soft);color:var(--human);
+    display:flex;align-items:center;justify-content:center;font-weight:700;font-family:var(--mono);flex:none;border:1px solid #e6d4ba}
+  /* idea card */
+  .idea{border:1px solid var(--line);border-radius:10px;background:#fff;padding:14px;display:flex;flex-direction:column;gap:10px;min-height:240px}
+  .idea:hover{border-color:var(--line-strong)}
+  .scorebar{height:6px;background:var(--skel);border-radius:3px;overflow:hidden}
+  .scorebar i{display:block;height:100%;background:var(--good)}
+  .idea .hook{font-size:13.5px;font-weight:600;line-height:1.35}
+  .meta-row{display:flex;gap:6px;flex-wrap:wrap}
+  /* stepper */
+  .stepper{display:flex;align-items:center;gap:8px;font-family:var(--mono);font-size:11px}
+  .stepper .s{display:flex;align-items:center;gap:8px;color:var(--faint)}
+  .stepper .s .n{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--line-strong);
+    display:flex;align-items:center;justify-content:center;font-size:11px}
+  .stepper .s.on{color:var(--ink)}
+  .stepper .s.on .n{border-color:var(--accent);background:var(--accent);color:#fff}
+  .stepper .s.done .n{border-color:var(--good);background:var(--good);color:#fff}
+  .stepper .sep{width:26px;height:1.5px;background:var(--line)}
+  /* post preview */
+  .li-card{border:1px solid var(--line);border-radius:10px;background:#fff;overflow:hidden}
+  .li-card .hd{display:flex;gap:10px;align-items:center;padding:14px}
+  .li-card .body{padding:0 14px 12px}
+  .li-card .imgph{border-radius:0;border-left:0;border-right:0;height:240px}
+  .li-actions{display:flex;justify-content:space-around;border-top:1px solid var(--line);padding:8px 0;color:var(--faint);font-size:12px}
+  /* calendar */
+  .cal{display:grid;grid-template-columns:repeat(7,1fr);gap:6px}
+  .cal .dow{font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);text-align:center;padding-bottom:2px}
+  .cal .day{border:1px solid var(--line);border-radius:7px;min-height:92px;padding:7px;background:#fff;display:flex;flex-direction:column;gap:5px}
+  .cal .day.dim{background:var(--panel-2);color:var(--faint)}
+  .cal .dn{font-size:11px;color:var(--muted);font-family:var(--mono)}
+  .cal .ev{font-size:10.5px;border-radius:5px;padding:4px 6px;line-height:1.25;border:1px solid}
+  .ev.sched{background:var(--accent-soft);border-color:#cdd6ef;color:var(--accent)}
+  .ev.draft{background:var(--panel-2);border-color:var(--line);color:var(--muted)}
+  .ev.posted{background:var(--good-soft);border-color:#bfe0cd;color:var(--good)}
+  .ev.you{background:var(--human-soft);border-color:#e6d4ba;color:var(--human)}
+  /* analytics */
+  .stat{border:1px solid var(--line);border-radius:10px;background:#fff;padding:16px}
+  .stat .big{font-size:26px;font-weight:700;letter-spacing:-.01em}
+  .stat .delta{font-family:var(--mono);font-size:11px;color:var(--good)}
+  .chart{height:170px;border:1px solid var(--line);border-radius:8px;background:
+    linear-gradient(to top,#fafafa,transparent),
+    repeating-linear-gradient(to right,transparent 0 calc(100%/7 - 1px),var(--line) calc(100%/7 - 1px) calc(100%/7));
+    position:relative;overflow:hidden;display:flex;align-items:flex-end;gap:10px;padding:14px}
+  .chart .bar{flex:1;background:var(--accent);opacity:.5;border-radius:4px 4px 0 0}
+  .perf-row{display:grid;grid-template-columns:1.6fr .7fr .7fr .7fr .8fr;gap:12px;align-items:center;
+    padding:12px 0;border-bottom:1px solid var(--line)}
+  .perf-row.hd{font-family:var(--mono);font-size:10px;letter-spacing:.05em;text-transform:uppercase;color:var(--faint);border-bottom:1px solid var(--line-strong)}
+  .num{font-variant-numeric:tabular-nums}
+  /* misc */
+  .insight{border:1px solid #bfe0cd;background:var(--good-soft);border-radius:10px;padding:14px;display:flex;gap:12px;align-items:flex-start}
+  .insight .ic{width:26px;height:26px;border-radius:7px;background:#fff;border:1px solid #bfe0cd;flex:none}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--muted);font-family:var(--mono)}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .legend i{width:11px;height:11px;border-radius:3px;display:inline-block;border:1px solid}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ================= SIDEBAR ================= -->
+  <aside class="side">
+    <div class="brand">
+      <div class="mark"></div>
+      <div class="nm">— CRM<small>wireframe</small></div>
+    </div>
+
+    <div class="navlbl">Workspace</div>
+    <div class="nav active" data-go="home"><span class="ni"></span>Home</div>
+    <div class="nav" data-go="ideas"><span class="ni c"></span>Ideas<span class="cnt">5</span></div>
+    <div class="nav" data-go="compose"><span class="ni"></span>Compose</div>
+    <div class="nav" data-go="calendar"><span class="ni"></span>Calendar<span class="cnt">3</span></div>
+    <div class="nav" data-go="analytics"><span class="ni c"></span>Analytics</div>
+
+    <div class="navlbl">Inputs</div>
+    <div class="nav" data-go="signals"><span class="ni"></span>Signals &amp; data</div>
+
+    <div class="autopill">
+      <div class="row">
+        <div class="stack" style="gap:1px">
+          <span style="font-size:12px;font-weight:700">Autopilot</span>
+          <span class="eyebrow" style="font-size:9px">running nightly</span>
+        </div>
+        <div class="switch"><i></i></div>
+      </div>
+      <div class="note" style="margin-top:10px;border-style:solid">
+        AI does <b>6 of 8</b> steps. You only <b>approve</b> &amp; <b>post</b>.
+      </div>
+    </div>
+  </aside>
+
+  <!-- ================= MAIN ================= -->
+  <main class="main">
+    <div class="topbar">
+      <div>
+        <div class="title" data-title>Home</div>
+        <div class="sub" data-sub>Your automated content pipeline at a glance</div>
+      </div>
+      <div class="search"><span class="ico c" style="width:12px;height:12px"></span>Search posts, ideas…</div>
+      <div class="avatar"></div>
+    </div>
+
+    <div class="content">
+
+      <!-- =========================================================
+           HOME
+      ========================================================== -->
+      <section class="screen active" id="home" data-screen-label="Home / Dashboard">
+        <div class="row between center" style="margin-bottom:16px">
+          <div class="note" style="max-width:560px">
+            Layout direction is open — three options below. Toggle to compare the dashboard skeleton.
+          </div>
+          <div class="vtabs" data-vgroup="home">
+            <div class="vtab active" data-v="a">A · Command center</div>
+            <div class="vtab" data-v="b">B · Approval inbox</div>
+            <div class="vtab" data-v="c">C · Pipeline board</div>
+          </div>
+        </div>
+
+        <!-- HOME variant A : command center -->
+        <div class="variant active" data-vg="home" data-vid="a">
+          <!-- the "you only do 2 things" hero -->
+          <div class="box pad-lg" style="margin-bottom:16px">
+            <div class="row between center wrap gap12">
+              <div class="stack" style="gap:4px">
+                <span class="eyebrow">Friday · June 6</span>
+                <div style="font-size:20px;font-weight:700">You have 2 things to do today</div>
+                <span style="color:var(--muted);font-size:13px">Everything else ran automatically overnight.</span>
+              </div>
+              <div class="row gap8">
+                <span class="tag human"><span class="dot"></span>Your job</span>
+                <span class="tag auto"><span class="dot"></span>AI handled the rest</span>
+              </div>
+            </div>
+            <div class="g2 mt16">
+              <div class="todo">
+                <div class="num">1</div>
+                <div class="grow stack" style="gap:6px">
+                  <div class="row between center"><b style="font-size:13px">Approve today's idea</b><span class="tag good"><span class="dot"></span>predicted strong</span></div>
+                  <span class="l w90"></span><span class="l w60"></span>
+                </div>
+                <button class="btn human sm" data-go="ideas">Review →</button>
+              </div>
+              <div class="todo">
+                <div class="num">2</div>
+                <div class="grow stack" style="gap:6px">
+                  <div class="row between center"><b style="font-size:13px">Post the scheduled draft</b><span class="tag human"><span class="dot"></span>9:00 AM slot</span></div>
+                  <span class="l w85"></span><span class="l w50"></span>
+                </div>
+                <button class="btn sm" data-go="calendar">Open →</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- pipeline -->
+          <div class="box pad-lg" style="margin-bottom:16px">
+            <div class="row between center" style="margin-bottom:6px">
+              <div class="h-sec">The automation pipeline</div>
+              <span class="eyebrow">last run 02:14 AM</span>
+            </div>
+            <div class="pipe">
+              <div class="pstep"><div class="nodewrap"><div class="node"><span class="gi"></span></div></div><div class="plbl">Scrape</div><div class="pmeta">extension</div></div>
+              <div class="pstep"><div class="nodewrap"><div class="node"><span class="gi"></span></div></div><div class="plbl">Trend scan</div><div class="pmeta">auto</div></div>
+              <div class="pstep"><div class="nodewrap"><div class="node"><span class="gi"></span></div></div><div class="plbl">5 ideas</div><div class="pmeta">auto</div></div>
+              <div class="pstep human"><div class="nodewrap"><div class="node"><span class="gi"></span></div></div><div class="plbl">Approve</div><div class="pmeta">you</div></div>
+              <div class="pstep"><div class="nodewrap"><div class="node"><span class="gi"></span></div></div><div class="plbl">Draft text</div><div class="pmeta">auto</div></div>
+              <div class="pstep"><div class="nodewrap"><div class="node"><span class="gi"></span></div></div><div class="plbl">Visual</div><div class="pmeta">nano banana</div></div>
+              <div class="pstep"><div class="nodewrap"><div class="node"><span class="gi"></span></div></div><div class="plbl">Schedule</div><div class="pmeta">auto</div></div>
+              <div class="pstep human"><div class="nodewrap"><div class="node"><span class="gi"></span></div></div><div class="plbl">Post</div><div class="pmeta">you</div></div>
+            </div>
+            <div class="legend mt12">
+              <span><i style="background:var(--human-soft);border-color:#e6d4ba"></i>you act</span>
+              <span><i style="background:#f3f4f8;border-color:#cfd2dd"></i>fully automated</span>
+            </div>
+          </div>
+
+          <div class="g-main">
+            <!-- approval queue -->
+            <div class="box pad-lg">
+              <div class="row between center" style="margin-bottom:12px">
+                <div class="h-sec">Needs your approval</div>
+                <span class="tag human"><span class="dot"></span>2 waiting</span>
+              </div>
+              <div class="stack gap12">
+                <div class="todo" style="border-radius:9px">
+                  <div class="imgph" style="width:54px;height:54px;font-size:8px">VISUAL</div>
+                  <div class="grow stack gap6">
+                    <b style="font-size:13px">"Why everyone's wrong about Claude replacing devs"</b>
+                    <div class="meta-row"><span class="tag auto"><span class="dot"></span>drafted</span><span class="tag"><span class="dot"></span>1,180 chars</span><span class="tag good"><span class="dot"></span>score 84</span></div>
+                  </div>
+                  <button class="btn human sm" data-go="compose">Approve</button>
+                </div>
+                <div class="todo" style="border-radius:9px">
+                  <div class="imgph" style="width:54px;height:54px;font-size:8px">VISUAL</div>
+                  <div class="grow stack gap6">
+                    <b style="font-size:13px">"I tried 5 AI agents this week…"</b>
+                    <div class="meta-row"><span class="tag auto"><span class="dot"></span>drafted</span><span class="tag"><span class="dot"></span>940 chars</span><span class="tag good"><span class="dot"></span>score 79</span></div>
+                  </div>
+                  <button class="btn human sm" data-go="compose">Approve</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- up next + signal peek -->
+            <div class="stack gap16">
+              <div class="box pad-lg">
+                <div class="row between center" style="margin-bottom:10px">
+                  <div class="h-sec">Up next on calendar</div>
+                  <button class="btn ghost sm" data-go="calendar">Calendar</button>
+                </div>
+                <div class="stack gap8">
+                  <div class="row gap10 center"><span class="tag human"><span class="dot"></span>Mon 9:00</span><span class="l w70"></span></div>
+                  <div class="divider" style="margin:6px 0"></div>
+                  <div class="row gap10 center"><span class="tag sched" style="font-family:var(--mono);font-size:10px;padding:3px 7px;border-radius:999px;border:1px solid #cdd6ef;background:var(--accent-soft);color:var(--accent)">Wed 9:00</span><span class="l w60"></span></div>
+                  <div class="divider" style="margin:6px 0"></div>
+                  <div class="row gap10 center"><span class="tag sched" style="font-family:var(--mono);font-size:10px;padding:3px 7px;border-radius:999px;border:1px solid #cdd6ef;background:var(--accent-soft);color:var(--accent)">Fri 9:00</span><span class="l w50"></span></div>
+                </div>
+              </div>
+              <div class="box pad-lg">
+                <div class="h-sec" style="margin-bottom:10px">Trending in your network</div>
+                <div class="stack gap8">
+                  <div class="chip" style="width:100%;justify-content:space-between">Claude / Anthropic<span class="bar"><i style="width:90%"></i></span></div>
+                  <div class="chip" style="width:100%;justify-content:space-between">AI agents<span class="bar"><i style="width:72%"></i></span></div>
+                  <div class="chip" style="width:100%;justify-content:space-between">Tech hiring<span class="bar"><i style="width:54%"></i></span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- HOME variant B : approval inbox first -->
+        <div class="variant" data-vg="home" data-vid="b">
+          <div class="g-main">
+            <div class="box pad-lg">
+              <div class="row between center" style="margin-bottom:14px">
+                <div class="stack" style="gap:2px">
+                  <div class="h-sec">Approval inbox</div>
+                  <span class="eyebrow">act on what AI prepared — top to bottom</span>
+                </div>
+                <span class="tag human"><span class="dot"></span>4 to clear</span>
+              </div>
+              <div class="stack gap10">
+                <div class="todo">
+                  <div class="num">▦</div>
+                  <div class="grow stack gap6"><b style="font-size:13px">"Why everyone's wrong about Claude…"</b><div class="meta-row"><span class="tag auto"><span class="dot"></span>idea + draft ready</span><span class="tag good"><span class="dot"></span>score 84</span></div></div>
+                  <div class="row gap6"><button class="btn ghost sm">Skip</button><button class="btn human sm" data-go="compose">Approve</button></div>
+                </div>
+                <div class="todo">
+                  <div class="num">▦</div>
+                  <div class="grow stack gap6"><b style="font-size:13px">"I tried 5 AI agents this week…"</b><div class="meta-row"><span class="tag auto"><span class="dot"></span>idea + draft ready</span><span class="tag good"><span class="dot"></span>score 79</span></div></div>
+                  <div class="row gap6"><button class="btn ghost sm">Skip</button><button class="btn human sm" data-go="compose">Approve</button></div>
+                </div>
+                <div class="todo">
+                  <div class="num">↑</div>
+                  <div class="grow stack gap6"><b style="font-size:13px">Scheduled — post now</b><div class="meta-row"><span class="tag human"><span class="dot"></span>9:00 AM today</span></div></div>
+                  <button class="btn human sm" data-go="calendar">Open to post</button>
+                </div>
+                <div class="todo" style="opacity:.6">
+                  <div class="num">·</div>
+                  <div class="grow stack gap6"><span class="l w70"></span><span class="l w40"></span></div>
+                  <button class="btn sm">Review</button>
+                </div>
+              </div>
+            </div>
+            <div class="stack gap16">
+              <div class="box pad-lg">
+                <div class="h-sec" style="margin-bottom:8px">This week</div>
+                <div class="g2" style="gap:10px">
+                  <div class="stat" style="padding:12px"><div class="big">3</div><span class="eyebrow">scheduled</span></div>
+                  <div class="stat" style="padding:12px"><div class="big">2</div><span class="eyebrow">posted</span></div>
+                </div>
+              </div>
+              <div class="box pad-lg">
+                <div class="h-sec" style="margin-bottom:8px">Trending now</div>
+                <div class="stack gap8">
+                  <div class="chip" style="width:100%;justify-content:space-between">Claude<span class="bar"><i style="width:90%"></i></span></div>
+                  <div class="chip" style="width:100%;justify-content:space-between">AI agents<span class="bar"><i style="width:72%"></i></span></div>
+                </div>
+                <div class="note mt12">Inbox = the whole product. Open an item only when you want detail.</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- HOME variant C : pipeline board / kanban -->
+        <div class="variant" data-vg="home" data-vid="c">
+          <div class="note" style="margin-bottom:14px">Kanban of every post moving through the machine. Human columns are tinted amber.</div>
+          <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:12px">
+            <div class="box pad" style="background:var(--panel-2)">
+              <div class="row between center" style="margin-bottom:10px"><b style="font-size:12px">Ideas</b><span class="tag auto"><span class="dot"></span>5</span></div>
+              <div class="stack gap8">
+                <div class="box pad" style="padding:10px"><span class="l w90"></span><span class="l w60 mt8"></span></div>
+                <div class="box pad" style="padding:10px"><span class="l w80"></span><span class="l w50 mt8"></span></div>
+                <div class="box pad" style="padding:10px"><span class="l w85"></span></div>
+              </div>
+            </div>
+            <div class="box pad" style="background:var(--human-soft);border-color:#e6d4ba">
+              <div class="row between center" style="margin-bottom:10px"><b style="font-size:12px">Approve idea</b><span class="tag human"><span class="dot"></span>you</span></div>
+              <div class="stack gap8"><div class="box pad" style="padding:10px"><b style="font-size:12px">"…Claude replacing devs"</b><div class="meta-row mt8"><span class="tag good"><span class="dot"></span>84</span></div></div></div>
+            </div>
+            <div class="box pad" style="background:var(--panel-2)">
+              <div class="row between center" style="margin-bottom:10px"><b style="font-size:12px">Drafting</b><span class="tag auto"><span class="dot"></span>auto</span></div>
+              <div class="stack gap8"><div class="box pad" style="padding:10px"><span class="l w90"></span><span class="l w70 mt8"></span><div class="imgph mt8" style="height:46px;font-size:8px">VISUAL · nano banana</div></div></div>
+            </div>
+            <div class="box pad" style="background:var(--human-soft);border-color:#e6d4ba">
+              <div class="row between center" style="margin-bottom:10px"><b style="font-size:12px">Approve draft</b><span class="tag human"><span class="dot"></span>you</span></div>
+              <div class="stack gap8"><div class="box pad" style="padding:10px"><span class="l w85"></span><span class="l w60 mt8"></span></div></div>
+            </div>
+            <div class="box pad" style="background:var(--panel-2)">
+              <div class="row between center" style="margin-bottom:10px"><b style="font-size:12px">Scheduled → Post</b><span class="tag human"><span class="dot"></span>you post</span></div>
+              <div class="stack gap8">
+                <div class="box pad" style="padding:10px"><span class="tag human" style="margin-bottom:6px"><span class="dot"></span>Mon 9:00</span><span class="l w80"></span></div>
+                <div class="box pad" style="padding:10px"><span class="tag good" style="margin-bottom:6px"><span class="dot"></span>posted</span><span class="l w70"></span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================================================
+           IDEAS
+      ========================================================== -->
+      <section class="screen" id="ideas" data-screen-label="Ideas — generation & selection">
+        <div class="box pad-lg" style="margin-bottom:16px">
+          <div class="row between center wrap gap12">
+            <div class="stack gap6">
+              <span class="eyebrow">Auto-generated · 02:14 AM · refreshes nightly</span>
+              <div style="font-size:18px;font-weight:700">5 ideas for you — ranked by trend &amp; predicted reach</div>
+              <span style="color:var(--muted);font-size:13px">Pick one to approve. AI drafts the text + visual next. The other 4 are saved.</span>
+            </div>
+            <button class="btn ghost"><span class="ico"></span>Regenerate</button>
+          </div>
+          <div class="divider"></div>
+          <div class="row between center wrap gap12">
+            <div class="row gap8 wrap center">
+              <span class="eyebrow">Built from trends:</span>
+              <span class="chip">Claude / Anthropic<span class="bar"><i style="width:90%"></i></span></span>
+              <span class="chip">AI agents<span class="bar"><i style="width:72%"></i></span></span>
+              <span class="chip">Tech hiring<span class="bar"><i style="width:54%"></i></span></span>
+              <span class="chip">Prompting<span class="bar"><i style="width:40%"></i></span></span>
+            </div>
+            <div class="vtabs" data-vgroup="ideas">
+              <div class="vtab active" data-v="a">A · 5 cards</div>
+              <div class="vtab" data-v="b">B · Ranked list</div>
+              <div class="vtab" data-v="c">C · Hero + alts</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- IDEAS variant A : five cards -->
+        <div class="variant active" data-vg="ideas" data-vid="a">
+          <div class="g-ideas">
+            <!-- card template repeated -->
+            <div class="idea">
+              <div class="row between center"><span class="tag good"><span class="dot"></span>#1 · 84</span><span class="tag auto"><span class="dot"></span>Claude</span></div>
+              <div class="scorebar"><i style="width:84%"></i></div>
+              <div class="hook">"Why everyone's wrong about Claude replacing developers"</div>
+              <div class="note" style="font-size:10px">Riding the #1 trend in your feed. Contrarian take = high comment rate.</div>
+              <div class="stack gap6" style="margin-top:auto">
+                <div class="meta-row"><span class="tag"><span class="dot"></span>Hot take</span><span class="tag"><span class="dot"></span>~1.2k chars</span></div>
+                <button class="btn primary sm" data-go="compose" style="justify-content:center">Approve &amp; draft →</button>
+              </div>
+            </div>
+            <div class="idea">
+              <div class="row between center"><span class="tag good"><span class="dot"></span>#2 · 79</span><span class="tag auto"><span class="dot"></span>AI agents</span></div>
+              <div class="scorebar"><i style="width:79%"></i></div>
+              <div class="hook">"I tried 5 AI agents this week. Only one survived."</div>
+              <div class="note" style="font-size:10px">Listicle + personal test. Strong save &amp; share signal.</div>
+              <div class="stack gap6" style="margin-top:auto">
+                <div class="meta-row"><span class="tag"><span class="dot"></span>Story</span><span class="tag"><span class="dot"></span>~0.9k chars</span></div>
+                <button class="btn primary sm" data-go="compose" style="justify-content:center">Approve &amp; draft →</button>
+              </div>
+            </div>
+            <div class="idea">
+              <div class="row between center"><span class="tag good"><span class="dot"></span>#3 · 71</span><span class="tag auto"><span class="dot"></span>Hiring</span></div>
+              <div class="scorebar"><i style="width:71%"></i></div>
+              <div class="hook">"The tech hiring market just shifted — what I'm seeing"</div>
+              <div class="note" style="font-size:10px">Timely + opinion. Good for your recruiter audience segment.</div>
+              <div class="stack gap6" style="margin-top:auto">
+                <div class="meta-row"><span class="tag"><span class="dot"></span>Insight</span><span class="tag"><span class="dot"></span>~1.0k chars</span></div>
+                <button class="btn primary sm" data-go="compose" style="justify-content:center">Approve &amp; draft →</button>
+              </div>
+            </div>
+            <div class="idea">
+              <div class="row between center"><span class="tag good"><span class="dot"></span>#4 · 66</span><span class="tag auto"><span class="dot"></span>Prompting</span></div>
+              <div class="scorebar"><i style="width:66%"></i></div>
+              <div class="hook">"Stop writing prompts like it's 2023"</div>
+              <div class="note" style="font-size:10px">How-to angle. Saves well, slower comments.</div>
+              <div class="stack gap6" style="margin-top:auto">
+                <div class="meta-row"><span class="tag"><span class="dot"></span>How-to</span><span class="tag"><span class="dot"></span>~1.1k chars</span></div>
+                <button class="btn primary sm" data-go="compose" style="justify-content:center">Approve &amp; draft →</button>
+              </div>
+            </div>
+            <div class="idea">
+              <div class="row between center"><span class="tag good"><span class="dot"></span>#5 · 58</span><span class="tag auto"><span class="dot"></span>Personal</span></div>
+              <div class="scorebar"><i style="width:58%"></i></div>
+              <div class="hook">"What 90 days of posting daily taught me about reach"</div>
+              <div class="note" style="font-size:10px">Reflection. Evergreen, lower trend lift.</div>
+              <div class="stack gap6" style="margin-top:auto">
+                <div class="meta-row"><span class="tag"><span class="dot"></span>Reflection</span><span class="tag"><span class="dot"></span>~1.0k chars</span></div>
+                <button class="btn primary sm" data-go="compose" style="justify-content:center">Approve &amp; draft →</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- IDEAS variant B : ranked list with reasons -->
+        <div class="variant" data-vg="ideas" data-vid="b">
+          <div class="box" style="overflow:hidden">
+            <div class="pad" style="display:grid;grid-template-columns:48px 1fr 150px 130px;gap:14px;align-items:center;border-bottom:1px solid var(--line);background:var(--panel-2)">
+              <span class="eyebrow">Rank</span><span class="eyebrow">Idea &amp; why it'll work</span><span class="eyebrow">Predicted reach</span><span class="eyebrow"></span>
+            </div>
+            <div class="pad" style="display:grid;grid-template-columns:48px 1fr 150px 130px;gap:14px;align-items:center;border-bottom:1px solid var(--line)">
+              <span class="tag good" style="justify-content:center">84</span>
+              <div class="stack gap4"><b style="font-size:13px">"Why everyone's wrong about Claude replacing developers"</b><span style="font-size:11px;color:var(--muted)">Top trend in your feed (Claude). Contrarian hooks drive comments.</span></div>
+              <div class="scorebar"><i style="width:84%"></i></div>
+              <button class="btn primary sm" data-go="compose" style="justify-content:center">Approve →</button>
+            </div>
+            <div class="pad" style="display:grid;grid-template-columns:48px 1fr 150px 130px;gap:14px;align-items:center;border-bottom:1px solid var(--line)">
+              <span class="tag good" style="justify-content:center">79</span>
+              <div class="stack gap4"><b style="font-size:13px">"I tried 5 AI agents this week. Only one survived."</b><span style="font-size:11px;color:var(--muted)">Listicle + first-person test. Strong saves &amp; shares.</span></div>
+              <div class="scorebar"><i style="width:79%"></i></div>
+              <button class="btn ghost sm" data-go="compose" style="justify-content:center">Approve →</button>
+            </div>
+            <div class="pad" style="display:grid;grid-template-columns:48px 1fr 150px 130px;gap:14px;align-items:center;border-bottom:1px solid var(--line)">
+              <span class="tag good" style="justify-content:center">71</span>
+              <div class="stack gap4"><b style="font-size:13px">"The tech hiring market just shifted — what I'm seeing"</b><span style="font-size:11px;color:var(--muted)">Timely opinion. Resonates with recruiter followers.</span></div>
+              <div class="scorebar"><i style="width:71%"></i></div>
+              <button class="btn ghost sm" data-go="compose" style="justify-content:center">Approve →</button>
+            </div>
+            <div class="pad" style="display:grid;grid-template-columns:48px 1fr 150px 130px;gap:14px;align-items:center;border-bottom:1px solid var(--line)">
+              <span class="tag" style="justify-content:center">66</span>
+              <div class="stack gap4"><b style="font-size:13px">"Stop writing prompts like it's 2023"</b><span style="font-size:11px;color:var(--muted)">How-to. Saves well, slower comment velocity.</span></div>
+              <div class="scorebar"><i style="width:66%"></i></div>
+              <button class="btn ghost sm" data-go="compose" style="justify-content:center">Approve →</button>
+            </div>
+            <div class="pad" style="display:grid;grid-template-columns:48px 1fr 150px 130px;gap:14px;align-items:center">
+              <span class="tag" style="justify-content:center">58</span>
+              <div class="stack gap4"><b style="font-size:13px">"What 90 days of posting daily taught me about reach"</b><span style="font-size:11px;color:var(--muted)">Evergreen reflection. Lower trend lift but reliable.</span></div>
+              <div class="scorebar"><i style="width:58%"></i></div>
+              <button class="btn ghost sm" data-go="compose" style="justify-content:center">Approve →</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- IDEAS variant C : hero + alternates -->
+        <div class="variant" data-vg="ideas" data-vid="c">
+          <div class="g-main">
+            <div class="box pad-lg" style="border-color:var(--line-strong)">
+              <div class="row between center" style="margin-bottom:10px"><span class="tag good"><span class="dot"></span>Top pick · score 84</span><span class="tag auto"><span class="dot"></span>trend: Claude</span></div>
+              <div style="font-size:22px;font-weight:700;line-height:1.25">"Why everyone's wrong about Claude replacing developers"</div>
+              <div class="note mt12">Built on the <b>#1 trend</b> in your network this week. Contrarian framing historically gets you 3× the comments. Suggested format: text + 1 visual.</div>
+              <div class="g2 mt16" style="gap:10px">
+                <div class="stat" style="padding:12px"><span class="eyebrow">Predicted reach</span><div class="big" style="font-size:20px">High</div></div>
+                <div class="stat" style="padding:12px"><span class="eyebrow">Best slot</span><div class="big" style="font-size:20px">Mon 9AM</div></div>
+              </div>
+              <button class="btn primary mt16" data-go="compose" style="width:100%;justify-content:center">Approve &amp; draft this →</button>
+            </div>
+            <div class="stack gap10">
+              <span class="eyebrow">Alternates</span>
+              <div class="box pad"><div class="row between center"><b style="font-size:12.5px">"I tried 5 AI agents this week…"</b><span class="tag good"><span class="dot"></span>79</span></div></div>
+              <div class="box pad"><div class="row between center"><b style="font-size:12.5px">"The tech hiring market just shifted…"</b><span class="tag good"><span class="dot"></span>71</span></div></div>
+              <div class="box pad"><div class="row between center"><b style="font-size:12.5px">"Stop writing prompts like it's 2023"</b><span class="tag"><span class="dot"></span>66</span></div></div>
+              <div class="box pad"><div class="row between center"><b style="font-size:12.5px">"What 90 days of posting taught me…"</b><span class="tag"><span class="dot"></span>58</span></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================================================
+           COMPOSE  (draft text -> visual -> approve)
+      ========================================================== -->
+      <section class="screen" id="compose" data-screen-label="Compose — draft, visual, approve">
+        <div class="box pad-lg" style="margin-bottom:16px">
+          <div class="row between center wrap gap12">
+            <div class="stack gap6">
+              <span class="eyebrow">Approved idea → AI is preparing everything</span>
+              <div style="font-size:17px;font-weight:700">"Why everyone's wrong about Claude replacing developers"</div>
+            </div>
+            <div class="stepper">
+              <div class="s done"><span class="n">✓</span>Write</div><span class="sep"></span>
+              <div class="s on"><span class="n">2</span>Visual</div><span class="sep"></span>
+              <div class="s"><span class="n">3</span>Approve</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="g2" style="align-items:start">
+          <!-- LEFT: text draft -->
+          <div class="box pad-lg">
+            <div class="row between center" style="margin-bottom:12px">
+              <div class="h-sec">Draft text</div>
+              <span class="tag auto"><span class="dot"></span>AI generated</span>
+            </div>
+            <div class="box" style="background:var(--panel-2);padding:14px;border-radius:8px">
+              <p style="margin:0 0 10px;font-size:13px">Everyone keeps saying Claude will replace developers.</p>
+              <p style="margin:0 0 10px;font-size:13px">After shipping with it for 3 months, here's what actually happened 👇</p>
+              <span class="l w95"></span><span class="l w90"></span><span class="l w80"></span>
+              <div style="height:10px"></div>
+              <span class="l w92"></span><span class="l w70"></span>
+              <div style="height:10px"></div>
+              <p style="margin:0;font-size:13px;color:var(--accent)">#AI #Claude #SoftwareEngineering</p>
+            </div>
+            <div class="row between center mt12">
+              <div class="row gap6">
+                <button class="btn ghost sm"><span class="ico"></span>Regenerate</button>
+                <button class="btn ghost sm">Shorter</button>
+                <button class="btn ghost sm">Punchier</button>
+              </div>
+              <span class="eyebrow">1,184 / 3,000</span>
+            </div>
+            <div class="note mt12">You can edit inline — AI just gives you the starting draft. Tone presets feed back into future drafts.</div>
+          </div>
+
+          <!-- RIGHT: nano banana visual -->
+          <div class="box pad-lg">
+            <div class="row between center" style="margin-bottom:12px">
+              <div class="h-sec">Visual</div>
+              <span class="tag auto"><span class="dot"></span>nano banana</span>
+            </div>
+            <span class="eyebrow">Auto-suggested prompt — edit before generating</span>
+            <div class="box" style="background:var(--panel-2);border-radius:8px;padding:12px;margin-top:6px">
+              <p style="margin:0;font-size:12.5px;font-family:var(--mono);line-height:1.5;color:var(--ink)">Minimal 3D illustration of a developer and a friendly robot building together, soft studio light, muted blue accent, lots of negative space<span style="color:var(--accent)">▏</span></p>
+            </div>
+            <div class="row gap6 mt12">
+              <button class="btn primary sm"><span class="ico"></span>Generate 4</button>
+              <button class="btn ghost sm">Upload instead</button>
+            </div>
+            <div class="g2 mt16" style="gap:10px">
+              <div class="imgph" style="height:104px;outline:2px solid var(--accent);outline-offset:2px">OPTION 1 · selected</div>
+              <div class="imgph" style="height:104px">OPTION 2</div>
+              <div class="imgph" style="height:104px">OPTION 3</div>
+              <div class="imgph" style="height:104px">OPTION 4</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- approval / preview bar -->
+        <div class="box pad-lg mt16">
+          <div class="row between center" style="margin-bottom:14px">
+            <div class="h-sec">Step 3 · Review &amp; approve</div>
+            <span class="tag human"><span class="dot"></span>your decision</span>
+          </div>
+          <div class="g-main">
+            <!-- linkedin preview -->
+            <div class="li-card">
+              <div class="hd">
+                <div class="avatar"></div>
+                <div class="stack" style="gap:3px"><b style="font-size:13px">You</b><span class="l w40" style="height:7px"></span></div>
+              </div>
+              <div class="body">
+                <p style="margin:0 0 8px;font-size:13px">Everyone keeps saying Claude will replace developers.</p>
+                <span class="l w90"></span><span class="l w80"></span><span class="l w60"></span>
+              </div>
+              <div class="imgph">POST VISUAL · option 1</div>
+              <div class="li-actions"><span>👍 Like</span><span>💬 Comment</span><span>↻ Repost</span><span>➤ Send</span></div>
+            </div>
+            <!-- approve actions -->
+            <div class="stack gap12">
+              <div class="note">Approving sends this to the calendar automatically — it picks your <b>next best slot</b>. You just post it manually when the time comes.</div>
+              <div class="box pad" style="background:var(--panel-2)">
+                <div class="row between center"><span class="eyebrow">Auto-scheduled for</span><span class="tag human"><span class="dot"></span>Mon, 9:00 AM</span></div>
+                <div class="divider" style="margin:10px 0"></div>
+                <div class="row between center"><span class="eyebrow">Why this slot</span><span style="font-size:12px;color:var(--muted)">your best engagement window</span></div>
+              </div>
+              <button class="btn human" style="justify-content:center;font-size:14px;padding:12px" data-go="calendar">✓ Approve &amp; schedule</button>
+              <div class="row gap8">
+                <button class="btn ghost grow" style="justify-content:center">Edit more</button>
+                <button class="btn ghost grow" style="justify-content:center">Discard</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================================================
+           CALENDAR
+      ========================================================== -->
+      <section class="screen" id="calendar" data-screen-label="Calendar — what's queued">
+        <div class="box pad-lg" style="margin-bottom:16px">
+          <div class="row between center wrap gap12">
+            <div class="stack gap6">
+              <span class="eyebrow">June 2026 · auto-scheduled by Autopilot</span>
+              <div style="font-size:18px;font-weight:700">Your content calendar</div>
+              <span style="color:var(--muted);font-size:13px">Approved posts land here automatically. Your job: post each one manually at its time.</span>
+            </div>
+            <div class="row gap8">
+              <div class="vtabs"><div class="vtab active">Month</div><div class="vtab">Week</div><div class="vtab">List</div></div>
+            </div>
+          </div>
+          <div class="legend mt16">
+            <span><i style="background:var(--human-soft);border-color:#e6d4ba"></i>ready — you post</span>
+            <span><i style="background:var(--accent-soft);border-color:#cdd6ef"></i>scheduled</span>
+            <span><i style="background:var(--panel-2);border-color:var(--line)"></i>draft pending approval</span>
+            <span><i style="background:var(--good-soft);border-color:#bfe0cd"></i>posted</span>
+          </div>
+        </div>
+
+        <div class="g-main" style="align-items:start">
+          <div class="box pad-lg">
+            <div class="cal" style="margin-bottom:6px">
+              <div class="dow">Mon</div><div class="dow">Tue</div><div class="dow">Wed</div><div class="dow">Thu</div><div class="dow">Fri</div><div class="dow">Sat</div><div class="dow">Sun</div>
+            </div>
+            <div class="cal">
+              <div class="day dim"><span class="dn">1</span><div class="ev posted">9:00 · posted ✓</div></div>
+              <div class="day"><span class="dn">2</span></div>
+              <div class="day"><span class="dn">3</span><div class="ev posted">9:00 · posted ✓</div></div>
+              <div class="day"><span class="dn">4</span></div>
+              <div class="day"><span class="dn">5</span><div class="ev posted">9:00 · posted ✓</div></div>
+              <div class="day dim"><span class="dn">6</span></div>
+              <div class="day dim"><span class="dn">7</span></div>
+
+              <div class="day" style="outline:2px solid var(--human);outline-offset:-1px"><span class="dn">8</span><div class="ev you">9:00 · POST NOW</div></div>
+              <div class="day"><span class="dn">9</span></div>
+              <div class="day"><span class="dn">10</span><div class="ev sched">9:00 · scheduled</div></div>
+              <div class="day"><span class="dn">11</span></div>
+              <div class="day"><span class="dn">12</span><div class="ev sched">9:00 · scheduled</div></div>
+              <div class="day dim"><span class="dn">13</span></div>
+              <div class="day dim"><span class="dn">14</span></div>
+
+              <div class="day"><span class="dn">15</span><div class="ev draft">9:00 · draft</div></div>
+              <div class="day"><span class="dn">16</span></div>
+              <div class="day"><span class="dn">17</span><div class="ev draft">9:00 · draft</div></div>
+              <div class="day"><span class="dn">18</span></div>
+              <div class="day"><span class="dn">19</span><div class="ev draft" style="border-style:dashed">+ open slot</div></div>
+              <div class="day dim"><span class="dn">20</span></div>
+              <div class="day dim"><span class="dn">21</span></div>
+            </div>
+          </div>
+
+          <div class="stack gap16">
+            <div class="box pad-lg">
+              <div class="h-sec" style="margin-bottom:10px">Ready to post</div>
+              <div class="todo" style="border-color:var(--human);border-radius:9px">
+                <div class="imgph" style="width:48px;height:48px;font-size:7px">VISUAL</div>
+                <div class="grow stack gap6"><b style="font-size:12.5px">"…Claude replacing devs"</b><span class="tag human"><span class="dot"></span>today 9:00 AM</span></div>
+              </div>
+              <button class="btn human mt12" style="width:100%;justify-content:center">Copy text + image → open LinkedIn</button>
+              <div class="note mt12">One tap copies caption &amp; downloads the visual so you paste &amp; post in seconds.</div>
+            </div>
+            <div class="box pad-lg">
+              <div class="h-sec" style="margin-bottom:10px">Posting cadence</div>
+              <div class="row between center"><span style="font-size:12px;color:var(--muted)">Mon · Wed · Fri</span><span class="tag"><span class="dot"></span>9:00 AM</span></div>
+              <div class="divider"></div>
+              <div class="note">Autopilot keeps 3 slots/week filled with approved posts. Change cadence in settings.</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- =========================================================
+           ANALYTICS
+      ========================================================== -->
+      <section class="screen" id="analytics" data-screen-label="Analytics — what performed">
+        <div class="box pad-lg" style="margin-bottom:16px">
+          <div class="stack gap6">
+            <span class="eyebrow">Last 30 days · synced from extension</span>
+            <div style="font-size:18px;font-weight:700">What performed — and what it teaches the engine</div>
+          </div>
+        </div>
+
+        <div class="g3" style="margin-bottom:16px">
+          <div class="stat"><span class="eyebrow">Impressions</span><div class="big num">48.2k</div><span class="delta">▲ 36% vs last month</span></div>
+          <div class="stat"><span class="eyebrow">Engagement rate</span><div class="big num">5.1%</div><span class="delta">▲ 0.8 pts</span></div>
+          <div class="stat"><span class="eyebrow">New followers</span><div class="big num">+612</div><span class="delta">▲ 22%</span></div>
+        </div>
+
+        <div class="g-main" style="align-items:start;margin-bottom:16px">
+          <div class="box pad-lg">
+            <div class="row between center" style="margin-bottom:12px"><div class="h-sec">Impressions by post</div><span class="eyebrow">last 7 posts</span></div>
+            <div class="chart">
+              <div class="bar" style="height:45%"></div><div class="bar" style="height:62%"></div>
+              <div class="bar" style="height:38%"></div><div class="bar" style="height:88%;opacity:.75"></div>
+              <div class="bar" style="height:54%"></div><div class="bar" style="height:70%"></div>
+              <div class="bar" style="height:48%"></div>
+            </div>
+          </div>
+          <div class="stack gap12">
+            <div class="insight">
+              <div class="ic"></div>
+              <div class="stack gap4">
+                <b style="font-size:13px">Claude posts win</b>
+                <span style="font-size:12px;color:var(--muted)">Posts mentioning "Claude" averaged <b>3.2×</b> the impressions. The engine is weighting that trend higher in tomorrow's ideas.</span>
+              </div>
+            </div>
+            <div class="insight" style="border-color:#cdd6ef;background:var(--accent-soft)">
+              <div class="ic" style="border-color:#cdd6ef"></div>
+              <div class="stack gap4">
+                <b style="font-size:13px">9 AM beats 1 PM</b>
+                <span style="font-size:12px;color:var(--muted)">Morning slots get +28% reach. Autopilot now prefers 9:00 AM.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="box pad-lg">
+          <div class="h-sec" style="margin-bottom:6px">Post performance</div>
+          <div class="perf-row hd"><span>Post</span><span>Impressions</span><span>Reactions</span><span>Comments</span><span>Trend</span></div>
+          <div class="perf-row"><div class="stack gap4"><b style="font-size:12.5px">"3 months building with Claude…"</b><span class="eyebrow">posted Jun 5</span></div><span class="num">12.4k</span><span class="num">486</span><span class="num">73</span><span class="tag auto"><span class="dot"></span>Claude</span></div>
+          <div class="perf-row"><div class="stack gap4"><b style="font-size:12.5px">"AI agents I actually use"</b><span class="eyebrow">posted Jun 3</span></div><span class="num">8.1k</span><span class="num">301</span><span class="num">42</span><span class="tag auto"><span class="dot"></span>Agents</span></div>
+          <div class="perf-row"><div class="stack gap4"><b style="font-size:12.5px">"Hiring is weird right now"</b><span class="eyebrow">posted Jun 1</span></div><span class="num">5.6k</span><span class="num">188</span><span class="num">29</span><span class="tag"><span class="dot"></span>Hiring</span></div>
+          <div class="perf-row" style="border-bottom:none"><div class="stack gap4"><b style="font-size:12.5px">"My prompting setup"</b><span class="eyebrow">posted May 29</span></div><span class="num">4.2k</span><span class="num">142</span><span class="num">18</span><span class="tag"><span class="dot"></span>Prompting</span></div>
+        </div>
+      </section>
+
+      <!-- =========================================================
+           SIGNALS (inputs — the scraped data feeding everything)
+      ========================================================== -->
+      <section class="screen" id="signals" data-screen-label="Signals & data inputs">
+        <div class="box pad-lg" style="margin-bottom:16px">
+          <div class="row between center wrap gap12">
+            <div class="stack gap6">
+              <span class="eyebrow">Raw inputs · fed by the Chrome extension</span>
+              <div style="font-size:18px;font-weight:700">Signals &amp; data</div>
+              <span style="color:var(--muted);font-size:13px">This is what the engine reads to find trends. You rarely touch it — it's here for transparency.</span>
+            </div>
+            <span class="tag good"><span class="dot"></span>synced 02:14 AM</span>
+          </div>
+        </div>
+        <div class="g3" style="margin-bottom:16px">
+          <div class="stat"><span class="eyebrow">Feed posts scanned</span><div class="big num">1,204</div></div>
+          <div class="stat"><span class="eyebrow">Your posts tracked</span><div class="big num">38</div></div>
+          <div class="stat"><span class="eyebrow">Trends detected</span><div class="big num">12</div></div>
+        </div>
+        <div class="g2" style="align-items:start">
+          <div class="box pad-lg">
+            <div class="h-sec" style="margin-bottom:12px">Detected trends (drives Ideas)</div>
+            <div class="stack gap10">
+              <div class="row between center gap10"><span class="chip" style="flex:1;justify-content:space-between">Claude / Anthropic<span class="bar"><i style="width:90%"></i></span></span><span class="eyebrow">312 mentions</span></div>
+              <div class="row between center gap10"><span class="chip" style="flex:1;justify-content:space-between">AI agents<span class="bar"><i style="width:72%"></i></span></span><span class="eyebrow">198 mentions</span></div>
+              <div class="row between center gap10"><span class="chip" style="flex:1;justify-content:space-between">Tech hiring<span class="bar"><i style="width:54%"></i></span></span><span class="eyebrow">141 mentions</span></div>
+              <div class="row between center gap10"><span class="chip" style="flex:1;justify-content:space-between">Prompting<span class="bar"><i style="width:40%"></i></span></span><span class="eyebrow">96 mentions</span></div>
+            </div>
+            <div class="note mt16">Extension scrapes your feed nightly → these counts → trend scores → the 5 ideas.</div>
+          </div>
+          <div class="box pad-lg">
+            <div class="h-sec" style="margin-bottom:12px">Recent feed sample</div>
+            <div class="stack gap10">
+              <div class="row gap10 center"><div class="avatar sm"></div><div class="grow stack gap6"><span class="l w80"></span><span class="l w50"></span></div><span class="tag auto"><span class="dot"></span>Claude</span></div>
+              <div class="divider" style="margin:4px 0"></div>
+              <div class="row gap10 center"><div class="avatar sm"></div><div class="grow stack gap6"><span class="l w70"></span><span class="l w60"></span></div><span class="tag auto"><span class="dot"></span>Agents</span></div>
+              <div class="divider" style="margin:4px 0"></div>
+              <div class="row gap10 center"><div class="avatar sm"></div><div class="grow stack gap6"><span class="l w85"></span><span class="l w40"></span></div><span class="tag"><span class="dot"></span>Hiring</span></div>
+              <div class="divider" style="margin:4px 0"></div>
+              <div class="row gap10 center"><div class="avatar sm"></div><div class="grow stack gap6"><span class="l w60"></span><span class="l w70"></span></div><span class="tag"><span class="dot"></span>Other</span></div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+</div>
+
+<script>
+  // screen router
+  const titles = {
+    home:["Home","Your automated content pipeline at a glance"],
+    ideas:["Ideas","5 trend-based ideas — approve one"],
+    compose:["Compose","Draft text · nano banana visual · approve"],
+    calendar:["Calendar","Approved posts, auto-scheduled"],
+    analytics:["Analytics","What performed and why"],
+    signals:["Signals & data","Raw inputs from the extension"]
+  };
+  function go(id){
+    document.querySelectorAll('.screen').forEach(s=>s.classList.toggle('active',s.id===id));
+    document.querySelectorAll('.nav').forEach(n=>n.classList.toggle('active',n.dataset.go===id));
+    const t=titles[id]||["",""];
+    document.querySelector('[data-title]').textContent=t[0];
+    document.querySelector('[data-sub]').textContent=t[1];
+    window.scrollTo({top:0});
+  }
+  document.querySelectorAll('[data-go]').forEach(el=>el.addEventListener('click',()=>go(el.dataset.go)));
+
+  // variant toggles
+  document.querySelectorAll('.vtabs[data-vgroup]').forEach(group=>{
+    const g=group.dataset.vgroup;
+    group.querySelectorAll('.vtab').forEach(tab=>{
+      tab.addEventListener('click',()=>{
+        group.querySelectorAll('.vtab').forEach(t=>t.classList.toggle('active',t===tab));
+        const v=tab.dataset.v;
+        document.querySelectorAll(`.variant[data-vg="${g}"]`).forEach(p=>p.classList.toggle('active',p.dataset.vid===v));
+      });
+    });
+  });
+</script>
+</body>
+</html>
