@@ -57,6 +57,8 @@ function extractOnePost(el: HTMLElement, urn: string, ctx: ScanContext): PostCap
   const author = extractAuthor(el) ?? ownerAsAuthor(ctx)
   const url = `https://www.linkedin.com/feed/update/${encodeURIComponent(urn)}/`
   const comments = extractComments(el, urn)
+  const images = extractMediaUrls(el)
+  const raw = { capturedAt: new Date().toISOString(), pageOwnerSlug: ctx.pageOwnerSlug, images }
 
   const isOwn = ctx.selfSlug && ctx.pageOwnerSlug === ctx.selfSlug
 
@@ -68,7 +70,7 @@ function extractOnePost(el: HTMLElement, urn: string, ctx: ScanContext): PostCap
       body: body ?? undefined,
       media: media ?? undefined,
       metrics,
-      raw: { capturedAt: new Date().toISOString(), pageOwnerSlug: ctx.pageOwnerSlug },
+      raw,
     }
     return { ownPost, author, comments }
   } else {
@@ -82,10 +84,44 @@ function extractOnePost(el: HTMLElement, urn: string, ctx: ScanContext): PostCap
       likes: metrics.likes ?? undefined,
       comments: metrics.comments ?? undefined,
       reposts: metrics.reposts ?? undefined,
-      raw: { capturedAt: new Date().toISOString(), pageOwnerSlug: ctx.pageOwnerSlug },
+      raw,
     }
     return { inspirationPost, author, comments }
   }
+}
+
+// Pull content image / video-poster URLs from a post's media containers. Scoped to the media
+// area so we never pick up the author avatar, reaction icons, or static UI assets.
+function extractMediaUrls(el: HTMLElement): string[] {
+  const urls = new Set<string>()
+
+  const imgSelectors = [
+    '.update-components-image img',
+    'img.feed-shared-image__image',
+    '.feed-shared-image img',
+    '.update-components-article__image img',
+    '.feed-shared-article__image img',
+    '.update-components-linkedin-video img', // video thumbnail
+  ].join(', ')
+  el.querySelectorAll<HTMLImageElement>(imgSelectors).forEach((img) => {
+    const src = img.currentSrc || img.src || img.getAttribute('data-delayed-url') || ''
+    if (isContentImage(src)) urls.add(src)
+  })
+
+  el.querySelectorAll<HTMLVideoElement>('.update-components-video video, video').forEach((v) => {
+    if (v.poster && isContentImage(v.poster)) urls.add(v.poster)
+  })
+
+  return Array.from(urls).slice(0, 8)
+}
+
+function isContentImage(src: string): boolean {
+  if (!src || src.startsWith('data:') || !/^https?:/.test(src)) return false
+  // Exclude avatars, company logos, reaction icons, and static UI sprites.
+  if (/profile-displayphoto|profile-framedphoto|company-logo|EntityPhoto|static\.licdn\.com|\/aero-v1\/|reactions?-/i.test(src)) {
+    return false
+  }
+  return true
 }
 
 function extractBody(el: HTMLElement): string | null {
