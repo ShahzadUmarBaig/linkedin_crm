@@ -4,6 +4,7 @@
 
 import { createSupabaseServiceClient } from './supabase/server'
 import { generate } from './ai/client'
+import { generatePostImages } from './images'
 import type { IdeaRow } from './ideas'
 
 export interface ApproveIdeaResult {
@@ -107,6 +108,16 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
     .update({ status: 'scheduled' })
     .eq('id', ideaId)
     .eq('user_id', userId)
+
+  // 8. Auto-generate the visual so the post is fully ready on review. Best-effort: never let an
+  // image failure (no Google key, transient API error) block the approval.
+  if (parsed.imagePrompt) {
+    try {
+      await generatePostImages(userId, draft.id, parsed.imagePrompt, 2)
+    } catch (err) {
+      console.error('[approve] image generation failed (draft still created)', err)
+    }
+  }
 
   return {
     draftId: draft.id,

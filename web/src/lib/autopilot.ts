@@ -7,18 +7,20 @@ import { createSupabaseServiceClient } from './supabase/server'
 import { extractTopicsForUser } from './topics'
 import { generateIdeas } from './ideas'
 import { refreshAllFeedsForUser } from './rss'
+import { backfillMissingImages } from './images'
 
 export interface AutopilotRunResult {
   userId: string
   rssItemsAdded: number
   topicsProcessed: number
   ideasGenerated: number
+  imagesGenerated: number
   ideasSkippedReason?: string
   error?: string
 }
 
 export async function runAutopilotForUser(userId: string): Promise<AutopilotRunResult> {
-  const result: AutopilotRunResult = { userId, rssItemsAdded: 0, topicsProcessed: 0, ideasGenerated: 0 }
+  const result: AutopilotRunResult = { userId, rssItemsAdded: 0, topicsProcessed: 0, ideasGenerated: 0, imagesGenerated: 0 }
 
   // 1. Pull fresh RSS/newsletter items so they're available to tag + feed ideas.
   try {
@@ -45,7 +47,14 @@ export async function runAutopilotForUser(userId: string): Promise<AutopilotRunR
     result.error = err instanceof Error ? err.message : 'idea generation failed'
   }
 
-  // 3. Stamp the run.
+  // 3. Safety net: generate visuals for any approved drafts still missing them.
+  try {
+    result.imagesGenerated = await backfillMissingImages(userId)
+  } catch (err) {
+    console.error(`[autopilot] image backfill failed for ${userId}`, err)
+  }
+
+  // 4. Stamp the run.
   try {
     const supabase = createSupabaseServiceClient()
     await supabase.from('settings').update({ last_autopilot_run_at: new Date().toISOString() }).eq('user_id', userId)
@@ -72,6 +81,7 @@ export async function runAutopilotAll(): Promise<AutopilotRunResult[]> {
         rssItemsAdded: 0,
         topicsProcessed: 0,
         ideasGenerated: 0,
+        imagesGenerated: 0,
         error: err instanceof Error ? err.message : 'autopilot run failed',
       })
     }

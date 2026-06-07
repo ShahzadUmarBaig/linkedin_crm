@@ -70,6 +70,31 @@ export async function generatePostImages(
   return { urls }
 }
 
+// Nightly safety net: generate images for drafts that have a prompt but no images yet (e.g. if
+// approve-time generation failed transiently). Bounded to keep cost predictable.
+export async function backfillMissingImages(userId: string, max = 5): Promise<number> {
+  const supabase = createSupabaseServiceClient()
+  const { data } = await supabase
+    .from('drafts')
+    .select('id, image_prompt')
+    .eq('user_id', userId)
+    .not('image_prompt', 'is', null)
+    .is('image_urls', null)
+    .order('created_at', { ascending: false })
+    .limit(max)
+
+  let generated = 0
+  for (const d of (data ?? []) as { id: string; image_prompt: string }[]) {
+    try {
+      await generatePostImages(userId, d.id, d.image_prompt, 2)
+      generated += 1
+    } catch (err) {
+      console.error(`[autopilot] image backfill failed for draft ${d.id}`, err)
+    }
+  }
+  return generated
+}
+
 export async function selectPostImage(userId: string, draftId: string, url: string | null): Promise<void> {
   const supabase = createSupabaseServiceClient()
   const { error } = await supabase

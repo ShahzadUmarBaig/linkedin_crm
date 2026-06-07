@@ -3,6 +3,9 @@ import { listIdeas } from '@/lib/ideas'
 import { getTrends } from '@/lib/dashboard'
 import { IdeasView } from './ideas-list'
 
+// Approve now generates the draft + 2 images in one go, which can exceed the default window.
+export const maxDuration = 60
+
 export default async function IdeasPage() {
   const user = await requireUser()
   const [proposed, rejected, trends] = await Promise.all([
