@@ -5,7 +5,8 @@
 import { createSupabaseServiceClient } from './supabase/server'
 import { generate } from './ai/client'
 
-const MAX_POSTS_PER_RUN = 50
+const MAX_POSTS_PER_BATCH = 50
+const DEFAULT_MAX_BATCHES = 8 // up to 400 items tagged per call, so RSS/feed backlogs drain
 const BODY_TRUNC = 240
 
 type Table = 'scraped_posts' | 'inspiration_posts' | 'rss_items'
@@ -35,10 +36,41 @@ Return ONLY a JSON array, one object per post, in the same order:
 [{"i": 0, "topics": ["AI Agents", "Startups"]}, {"i": 1, "topics": ["Hiring"]}]
 No prose, no markdown fences.`
 
+// Tag every untagged post/item, in batches, until the backlog is drained (or we hit the batch
+// cap). Each batch re-queries untagged rows, so prior batches are naturally excluded.
 export async function extractTopicsForUser(
   userId: string,
-  opts?: { scrapeRunId?: string | null },
+  opts?: { scrapeRunId?: string | null; maxBatches?: number },
 ): Promise<ExtractTopicsResult> {
+  const maxBatches = opts?.maxBatches ?? DEFAULT_MAX_BATCHES
+  let totalProcessed = 0
+  let totalCost = 0
+  let model: string | undefined
+  let anyRun = false
+
+  for (let b = 0; b < maxBatches; b++) {
+    const batch = await tagOneBatch(userId, opts?.scrapeRunId ?? null)
+    if (batch.noWork) break
+    anyRun = true
+    totalProcessed += batch.processed
+    totalCost += batch.costUsd ?? 0
+    model = batch.model ?? model
+    // Stop early if the model returned nothing parseable (avoid burning the full batch budget).
+    if (batch.processed === 0) break
+  }
+
+  if (!anyRun) return { processed: 0, skipped: true, reason: 'No posts need topic tagging.' }
+  return { processed: totalProcessed, skipped: false, costUsd: totalCost, model }
+}
+
+interface BatchResult {
+  noWork?: boolean
+  processed: number
+  costUsd?: number
+  model?: string
+}
+
+async function tagOneBatch(userId: string, scrapeRunId: string | null): Promise<BatchResult> {
   const supabase = createSupabaseServiceClient()
 
   const [ownRes, inspRes, rssRes] = await Promise.all([
@@ -48,20 +80,20 @@ export async function extractTopicsForUser(
       .eq('user_id', userId)
       .not('body', 'is', null)
       .is('topics', null)
-      .limit(MAX_POSTS_PER_RUN),
+      .limit(MAX_POSTS_PER_BATCH),
     supabase
       .from('inspiration_posts')
       .select('id, body')
       .eq('user_id', userId)
       .not('body', 'is', null)
       .is('topics', null)
-      .limit(MAX_POSTS_PER_RUN),
+      .limit(MAX_POSTS_PER_BATCH),
     supabase
       .from('rss_items')
       .select('id, title, summary')
       .eq('user_id', userId)
       .is('topics', null)
-      .limit(MAX_POSTS_PER_RUN),
+      .limit(MAX_POSTS_PER_BATCH),
   ])
 
   const items: Item[] = [
@@ -74,10 +106,10 @@ export async function extractTopicsForUser(
     })),
   ]
     .filter((it) => it.body && it.body.trim().length > 0)
-    .slice(0, MAX_POSTS_PER_RUN)
+    .slice(0, MAX_POSTS_PER_BATCH)
 
   if (items.length === 0) {
-    return { processed: 0, skipped: true, reason: 'No posts need topic tagging.' }
+    return { noWork: true, processed: 0 }
   }
 
   const userPrompt =
@@ -90,13 +122,13 @@ export async function extractTopicsForUser(
     system: SYSTEM_PROMPT,
     user: userPrompt,
     maxTokens: Math.min(4096, 300 + items.length * 40),
-    scrapeRunId: opts?.scrapeRunId ?? null,
+    scrapeRunId,
   })
 
   const byIndex = parseTopics(response.text)
   if (byIndex.size === 0) {
     console.warn('[topics] unparseable AI response (first 400 chars):', response.text.slice(0, 400))
-    return { processed: 0, skipped: false, reason: 'AI returned no parseable topics.', costUsd: response.costUsd, model: response.model }
+    return { processed: 0, costUsd: response.costUsd, model: response.model }
   }
 
   // Write topics back. Always set a (possibly empty) array so the post is not re-tagged every run.
@@ -109,7 +141,7 @@ export async function extractTopicsForUser(
     }),
   )
 
-  return { processed, skipped: false, costUsd: response.costUsd, model: response.model }
+  return { processed, costUsd: response.costUsd, model: response.model }
 }
 
 function truncate(s: string, n: number): string {
