@@ -19,6 +19,7 @@ const TITLES: Record<string, [string, string]> = {
   '/calendar': ['Calendar', 'Approved posts, auto-scheduled'],
   '/analytics': ['Analytics', 'What performed and why'],
   '/signals': ['Signals & data', 'Raw inputs from the extension'],
+  '/rss': ['RSS feeds', 'Newsletters & blogs feeding the engine'],
   '/profile': ['Profile', 'Your niche, pillars, tone & audience'],
   '/settings': ['Settings', 'API keys, models & budget'],
 }
@@ -66,6 +67,7 @@ export function AppShell({
 
         <div className="navlbl">Inputs</div>
         <NavItem href="/signals" label="Signals & data" active={isActive('/signals')} />
+        <NavItem href="/rss" label="RSS feeds" active={isActive('/rss')} circle />
 
         <div className="navlbl">Account</div>
         <NavItem href="/profile" label="Profile" active={isActive('/profile')} circle />

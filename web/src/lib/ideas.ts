@@ -5,6 +5,7 @@
 
 import { createSupabaseServerClient, createSupabaseServiceClient } from './supabase/server'
 import { generate } from './ai/client'
+import { getRecentRssForIdeas } from './rss'
 
 export const IDEA_QUEUE_TARGET = 5
 
@@ -118,8 +119,8 @@ export async function generateIdeas(
     return { generated: 0, skipped: true, reason: `Queue already has ${proposed} proposed ideas (target ${IDEA_QUEUE_TARGET}).` }
   }
 
-  // 3. Gather context: recent own posts + recent inspiration
-  const [{ data: ownPosts }, { data: inspirations }, { data: existingIdeas }] = await Promise.all([
+  // 3. Gather context: recent own posts + recent inspiration + recent newsletter items
+  const [{ data: ownPosts }, { data: inspirations }, { data: existingIdeas }, rssItems] = await Promise.all([
     supabase
       .from('scraped_posts')
       .select('linkedin_urn, body, posted_at')
@@ -140,6 +141,7 @@ export async function generateIdeas(
       .eq('user_id', userId)
       .eq('status', 'proposed')
       .limit(20),
+    getRecentRssForIdeas(userId, 12),
   ])
 
   // 4. Build prompts + call AI
@@ -148,6 +150,7 @@ export async function generateIdeas(
     pillars,
     ownPosts: ownPosts ?? [],
     inspirations: inspirations ?? [],
+    rssItems: rssItems ?? [],
     existingHooks: (existingIdeas ?? []).map((i: { hook: string | null }) => i.hook).filter((h): h is string => Boolean(h)),
     count: target,
   })
@@ -211,6 +214,7 @@ function buildUserPrompt(args: {
   pillars: Array<{ name: string; description: string }>
   ownPosts: Array<{ linkedin_urn: string; body: string | null }>
   inspirations: Array<{ linkedin_urn: string; body: string | null; likes: number | null; comments: number | null }>
+  rssItems: Array<{ title: string | null; summary: string | null }>
   existingHooks: string[]
   count: number
 }): string {
@@ -242,6 +246,17 @@ function buildUserPrompt(args: {
       if (!i.body) continue
       const counts = `${i.likes ?? '?'}❤ ${i.comments ?? '?'}💬`
       lines.push(`- ${i.linkedin_urn} (${counts}): ${truncate(i.body, 280)}`)
+    }
+  }
+
+  if (args.rssItems.length > 0) {
+    lines.push('')
+    lines.push('RECENT NEWSLETTER / BLOG ITEMS (fresh external signal — riff on these for timely, informed takes):')
+    for (const r of args.rssItems) {
+      if (!r.title && !r.summary) continue
+      const title = r.title ? r.title.trim() : ''
+      const summary = r.summary ? truncate(r.summary, 220) : ''
+      lines.push(`- ${[title, summary].filter(Boolean).join(' — ')}`)
     }
   }
 

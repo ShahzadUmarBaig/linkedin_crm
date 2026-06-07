@@ -35,16 +35,26 @@ export interface HomeData {
 // from the feed). This is the trend signal the idea engine reads.
 export async function getTrends(userId: string, limit = 6): Promise<TrendItem[]> {
   const supabase = await createSupabaseServerClient()
-  const { data } = await supabase
-    .from('inspiration_posts')
-    .select('topics')
-    .eq('user_id', userId)
-    .not('topics', 'is', null)
-    .order('first_seen_at', { ascending: false })
-    .limit(400)
+  // Trends aggregate topics from both inputs: the LinkedIn feed and RSS/newsletter items.
+  const [inspRes, rssRes] = await Promise.all([
+    supabase
+      .from('inspiration_posts')
+      .select('topics')
+      .eq('user_id', userId)
+      .not('topics', 'is', null)
+      .order('first_seen_at', { ascending: false })
+      .limit(400),
+    supabase
+      .from('rss_items')
+      .select('topics')
+      .eq('user_id', userId)
+      .not('topics', 'is', null)
+      .order('published_at', { ascending: false, nullsFirst: false })
+      .limit(400),
+  ])
 
   const counts = new Map<string, number>()
-  for (const row of (data ?? []) as { topics: string[] | null }[]) {
+  for (const row of [...((inspRes.data ?? []) as { topics: string[] | null }[]), ...((rssRes.data ?? []) as { topics: string[] | null }[])]) {
     for (const raw of row.topics ?? []) {
       const t = raw.trim()
       if (!t) continue

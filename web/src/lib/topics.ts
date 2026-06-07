@@ -8,7 +8,7 @@ import { generate } from './ai/client'
 const MAX_POSTS_PER_RUN = 50
 const BODY_TRUNC = 240
 
-type Table = 'scraped_posts' | 'inspiration_posts'
+type Table = 'scraped_posts' | 'inspiration_posts' | 'rss_items'
 interface Item {
   table: Table
   id: string
@@ -41,7 +41,7 @@ export async function extractTopicsForUser(
 ): Promise<ExtractTopicsResult> {
   const supabase = createSupabaseServiceClient()
 
-  const [ownRes, inspRes] = await Promise.all([
+  const [ownRes, inspRes, rssRes] = await Promise.all([
     supabase
       .from('scraped_posts')
       .select('id, body')
@@ -56,11 +56,22 @@ export async function extractTopicsForUser(
       .not('body', 'is', null)
       .is('topics', null)
       .limit(MAX_POSTS_PER_RUN),
+    supabase
+      .from('rss_items')
+      .select('id, title, summary')
+      .eq('user_id', userId)
+      .is('topics', null)
+      .limit(MAX_POSTS_PER_RUN),
   ])
 
   const items: Item[] = [
     ...((ownRes.data ?? []) as { id: string; body: string }[]).map((r) => ({ table: 'scraped_posts' as Table, id: r.id, body: r.body })),
     ...((inspRes.data ?? []) as { id: string; body: string }[]).map((r) => ({ table: 'inspiration_posts' as Table, id: r.id, body: r.body })),
+    ...((rssRes.data ?? []) as { id: string; title: string | null; summary: string | null }[]).map((r) => ({
+      table: 'rss_items' as Table,
+      id: r.id,
+      body: [r.title, r.summary].filter(Boolean).join('. '),
+    })),
   ]
     .filter((it) => it.body && it.body.trim().length > 0)
     .slice(0, MAX_POSTS_PER_RUN)

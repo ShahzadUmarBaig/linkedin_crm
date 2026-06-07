@@ -6,9 +6,11 @@
 import { createSupabaseServiceClient } from './supabase/server'
 import { extractTopicsForUser } from './topics'
 import { generateIdeas } from './ideas'
+import { refreshAllFeedsForUser } from './rss'
 
 export interface AutopilotRunResult {
   userId: string
+  rssItemsAdded: number
   topicsProcessed: number
   ideasGenerated: number
   ideasSkippedReason?: string
@@ -16,9 +18,17 @@ export interface AutopilotRunResult {
 }
 
 export async function runAutopilotForUser(userId: string): Promise<AutopilotRunResult> {
-  const result: AutopilotRunResult = { userId, topicsProcessed: 0, ideasGenerated: 0 }
+  const result: AutopilotRunResult = { userId, rssItemsAdded: 0, topicsProcessed: 0, ideasGenerated: 0 }
 
-  // 1. Topic tagging — best-effort; a failure here shouldn't block idea generation.
+  // 1. Pull fresh RSS/newsletter items so they're available to tag + feed ideas.
+  try {
+    const r = await refreshAllFeedsForUser(userId)
+    result.rssItemsAdded = r.itemsAdded
+  } catch (err) {
+    console.error(`[autopilot] rss refresh failed for ${userId}`, err)
+  }
+
+  // 2. Topic tagging — best-effort; a failure here shouldn't block idea generation.
   try {
     const t = await extractTopicsForUser(userId)
     result.topicsProcessed = t.processed
@@ -59,6 +69,7 @@ export async function runAutopilotAll(): Promise<AutopilotRunResult[]> {
     } catch (err) {
       results.push({
         userId: row.user_id,
+        rssItemsAdded: 0,
         topicsProcessed: 0,
         ideasGenerated: 0,
         error: err instanceof Error ? err.message : 'autopilot run failed',
