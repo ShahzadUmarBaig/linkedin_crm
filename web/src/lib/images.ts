@@ -1,14 +1,14 @@
-// AI image generation via fal.ai → FLUX.1 [dev]. Generates one image from a prompt, re-uploads
+// AI image generation via fal.ai → FLUX.2 [pro]. Generates one image from a prompt, re-uploads
 // it to a public Supabase Storage bucket (so we own the asset), and records the URL on the draft.
-// Auth is a single server env var (FAL_KEY) — no per-user key, no Google-billing hassle.
+// Auth is a single server env var (FALAIKEY) — no per-user key, no Google-billing hassle.
 
 import { fal } from '@fal-ai/client'
 import { createSupabaseServiceClient } from './supabase/server'
 
-const FLUX_MODEL = 'fal-ai/flux/dev' // $0.025/image; swap to 'fal-ai/flux/schnell' for cheaper/faster
+const FLUX_MODEL = 'fal-ai/flux-2-pro' // ~$0.03/image at our size; top-tier quality, one image/call
 const BUCKET = 'post-images'
-const COST_PER_IMAGE = 0.025
-// LinkedIn-friendly landscape (~1.91:1).
+const COST_PER_IMAGE = 0.03
+// LinkedIn-friendly landscape (~1.91:1). 0.75 MP → $0.03.
 const IMAGE_SIZE = { width: 1200, height: 628 }
 
 type Supa = ReturnType<typeof createSupabaseServiceClient>
@@ -33,7 +33,7 @@ export async function generatePostImages(
   userId: string,
   draftId: string,
   prompt: string,
-  count = 1,
+  _count = 1, // FLUX.2 [pro] returns one image per call
 ): Promise<{ urls: string[] }> {
   if (!prompt || prompt.trim().length < 10) throw new Error('Add a longer image prompt first.')
   if (!ensureConfigured()) throw new Error('Image generation not configured — set FALAIKEY in the environment.')
@@ -44,8 +44,7 @@ export async function generatePostImages(
       input: {
         prompt: prompt.trim(),
         image_size: IMAGE_SIZE,
-        num_images: count,
-        num_inference_steps: 28,
+        output_format: 'jpeg',
         enable_safety_checker: true,
       },
     })

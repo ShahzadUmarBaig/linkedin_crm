@@ -180,7 +180,7 @@ export function ComposeView({ view, drafts = [] }: { view: CalendarSlotView; dra
         <div className="box pad-lg">
           <div className="row between center" style={{ marginBottom: 12 }}>
             <div className="h-sec">Visual</div>
-            <span className="tag auto"><span className="dot" />FLUX.1</span>
+            <span className="tag auto"><span className="dot" />FLUX.2 pro</span>
           </div>
           <div className="row between center" style={{ marginBottom: 6 }}>
             <span className="eyebrow">Image prompt — edit before generating</span>
@@ -214,7 +214,7 @@ export function ComposeView({ view, drafts = [] }: { view: CalendarSlotView; dra
           <div className="note mt16">
             {images[0]
               ? 'This image is attached — it downloads when you publish. Edit the prompt and Regenerate for a different take.'
-              : 'Generates one image with FLUX.1 (fal.ai). Needs FALAIKEY configured.'}
+              : 'Generates one image with FLUX.2 [pro] (fal.ai). Needs FALAIKEY configured.'}
           </div>
         </div>
       </div>

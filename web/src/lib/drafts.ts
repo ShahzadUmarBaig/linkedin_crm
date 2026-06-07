@@ -301,7 +301,7 @@ Return ONLY a JSON object (no prose, no markdown fences):
   "body": "The full LinkedIn post. 150-300 words. The provided 'hook' MUST be line 1 verbatim or near-verbatim. Use LinkedIn formatting: short paragraphs, blank lines between thoughts. End with a question or CTA, THEN a final line with 3-5 relevant hashtags. Match the user's tone EXACTLY.",
   "scheduledFor": "ISO 8601 datetime in UTC. Must be at least 24 hours from the current time. Must not duplicate any time already in 'existingSlotsIso'. Pick a slot consistent with the user's past best-engagement windows; if there's no signal, default to a weekday morning (Tue/Wed/Thu around 14:00 UTC = 9am ET).",
   "schedulingReasoning": "One short sentence on WHY this slot. Reference the history data if it informed the choice.",
-  "imagePrompt": "ONE rock-solid prompt for the FLUX.1 text-to-image model that reliably yields a single, accurate, professional LinkedIn visual. See the imagePrompt rules below for exactly how to write it."
+  "imagePrompt": "ONE rock-solid prompt for the FLUX.2 [pro] text-to-image model that reliably yields a single, accurate, professional LinkedIn visual. See the imagePrompt rules below for exactly how to write it."
 }
 
 Rules:
