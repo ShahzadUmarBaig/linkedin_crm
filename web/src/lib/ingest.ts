@@ -189,7 +189,7 @@ async function upsertPeople(
       connection_count: p.connectionCount ?? null,
       top_skills: p.topSkills ?? null,
       services: p.services ?? null,
-      featured: p.featured ?? null,
+      featured: p.featured ?? [], // NOT NULL column — default to empty array, never null
       is_connection: p.isConnection ?? false,
       last_seen_at: now,
       raw: p.raw ?? null,
