@@ -5,14 +5,20 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { regenerateDraftAction, rescheduleSlotAction, updateDraftBodyAction } from '@/app/actions/calendar'
 import type { CalendarSlotView } from '@/lib/calendar'
-import { formatDateTime } from '@/lib/format'
+import { formatDate, formatDateTime, truncate } from '@/lib/format'
 import { PublishFlow } from '../publish-flow'
 
 const MAX = 3000
 const FALLBACK_IMAGE_PROMPT =
   'No image prompt yet — regenerate this draft (or approve a fresh idea) to get a detailed prompt.'
 
-export function ComposeView({ view }: { view: CalendarSlotView }) {
+interface DraftRef {
+  slot_id: string
+  idea_hook: string | null
+  scheduled_for: string
+}
+
+export function ComposeView({ view, drafts = [] }: { view: CalendarSlotView; drafts?: DraftRef[] }) {
   const router = useRouter()
   const [body, setBody] = useState(view.draft_body ?? '')
   const [dirty, setDirty] = useState(false)
@@ -88,6 +94,29 @@ export function ComposeView({ view }: { view: CalendarSlotView }) {
             <div className="s"><span className="n">3</span>Approve</div>
           </div>
         </div>
+
+        {drafts.length > 1 && (
+          <>
+            <div className="divider" />
+            <div className="row gap8 wrap center">
+              <span className="eyebrow">Your drafts:</span>
+              {drafts.map((d) => {
+                const active = d.slot_id === view.slot_id
+                return (
+                  <Link
+                    key={d.slot_id}
+                    href={`/compose?slot=${d.slot_id}`}
+                    className={`chip${active ? '' : ''}`}
+                    style={active ? { borderColor: 'var(--accent)', color: 'var(--accent)' } : undefined}
+                    title={d.idea_hook ?? ''}
+                  >
+                    {d.idea_hook ? truncate(d.idea_hook, 36) : 'Draft'} · {formatDate(d.scheduled_for)}
+                  </Link>
+                )
+              })}
+            </div>
+          </>
+        )}
       </div>
 
       {msg && <div className={`banner ${msg.kind === 'ok' ? 'ok' : 'err'} mb16`}>{msg.text}</div>}

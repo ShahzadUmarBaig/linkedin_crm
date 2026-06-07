@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { requireUser } from '@/lib/auth'
 import { getComposeView } from '@/lib/compose'
+import { listSlots } from '@/lib/calendar'
 import { ComposeView } from './compose-view'
 
 // "Regenerate draft" (invoked from this route) makes an AI call that can exceed the default window.
@@ -13,7 +14,16 @@ export default async function ComposePage({
 }) {
   const user = await requireUser()
   const sp = await searchParams
-  const view = await getComposeView(user.id, { slotId: sp.slot, draftId: sp.draft })
+  const [view, scheduled] = await Promise.all([
+    getComposeView(user.id, { slotId: sp.slot, draftId: sp.draft }),
+    listSlots(user.id, { status: 'scheduled' }),
+  ])
+
+  const drafts = scheduled.map((s) => ({
+    slot_id: s.slot_id,
+    idea_hook: s.idea_hook,
+    scheduled_for: s.scheduled_for,
+  }))
 
   if (!view) {
     return (
@@ -27,5 +37,5 @@ export default async function ComposePage({
     )
   }
 
-  return <ComposeView view={view} />
+  return <ComposeView view={view} drafts={drafts} />
 }

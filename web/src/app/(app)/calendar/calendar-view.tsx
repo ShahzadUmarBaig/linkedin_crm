@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   rescheduleSlotAction,
   skipSlotAction,
@@ -143,9 +144,12 @@ export function CalendarView({ upcoming, posted, skipped }: Props) {
                 <div className="stack gap12">
                   {due.map((s) => (
                     <div className="todo" key={s.slot_id} style={{ borderColor: 'var(--human-line)', borderRadius: 9, flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
-                      <div className="stack gap6">
-                        <b style={{ fontSize: 12.5 }}>{s.idea_hook ?? 'Scheduled post'}</b>
-                        <span className="tag human"><span className="dot" />{formatDateTime(s.scheduled_for)}</span>
+                      <div className="row between center gap8">
+                        <div className="stack gap6">
+                          <b style={{ fontSize: 12.5 }}>{s.idea_hook ?? 'Scheduled post'}</b>
+                          <span className="tag human"><span className="dot" />{formatDateTime(s.scheduled_for)}</span>
+                        </div>
+                        <Link className="btn ghost sm" href={`/compose?slot=${s.slot_id}`}>Edit →</Link>
                       </div>
                       <PublishFlow slotId={s.slot_id} caption={s.draft_body ?? ''} />
                     </div>
@@ -204,6 +208,11 @@ function SlotDetail({ slot, onClose }: { slot: CalendarSlotView; onClose: () => 
         </span>
         <span className="tag auto"><span className="dot" />{slot.ai_chosen ? 'AI-scheduled' : 'manual'}</span>
       </div>
+      {!readonly && (
+        <Link className="btn primary sm" href={`/compose?slot=${slot.slot_id}`} style={{ width: '100%', marginBottom: 10 }}>
+          Open in Compose (full editor) →
+        </Link>
+      )}
       {slot.ai_reasoning && <p className="note" style={{ marginBottom: 10 }}>{slot.ai_reasoning}</p>}
 
       {editing && !readonly ? (
