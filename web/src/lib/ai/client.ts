@@ -148,6 +148,10 @@ async function callGoogle(apiKey: string, model: string, req: GenerateRequest) {
       systemInstruction: req.system,
       maxOutputTokens: req.maxTokens ?? 4096,
       responseMimeType: 'application/json',
+      // Gemini 2.5 models are "thinking" models: by default they spend the output-token budget
+      // on internal reasoning, which silently truncated/emptied our JSON responses. Our tasks are
+      // extraction/formatting, not open reasoning, so disable thinking for reliable, complete JSON.
+      thinkingConfig: { thinkingBudget: 0 },
     },
   })
   return {
