@@ -13,6 +13,7 @@ import type {
   ScrapedOwnPostInput,
   ScrapedPersonInput,
 } from '@crm/shared'
+import { isExtensionAlive } from './storage'
 
 const BUFFER_KEY = 'scrapeBuffer'
 
@@ -38,12 +39,24 @@ function emptyBuffer(): Buffer {
 }
 
 async function readBuffer(): Promise<Buffer> {
-  const stored = await chrome.storage.local.get(BUFFER_KEY)
-  return (stored[BUFFER_KEY] as Buffer | undefined) ?? emptyBuffer()
+  if (!isExtensionAlive()) return emptyBuffer()
+  try {
+    const stored = await chrome.storage.local.get(BUFFER_KEY)
+    return (stored[BUFFER_KEY] as Buffer | undefined) ?? emptyBuffer()
+  } catch {
+    // Context invalidated mid-flight (extension reloaded). Treat as empty; the live content
+    // script in the surviving context owns the real buffer.
+    return emptyBuffer()
+  }
 }
 
 async function writeBuffer(buf: Buffer): Promise<void> {
-  await chrome.storage.local.set({ [BUFFER_KEY]: buf })
+  if (!isExtensionAlive()) return
+  try {
+    await chrome.storage.local.set({ [BUFFER_KEY]: buf })
+  } catch {
+    // Swallow "Extension context invalidated" — nothing to write to anymore.
+  }
 }
 
 // Serialize all buffer mutations onto a single promise chain.

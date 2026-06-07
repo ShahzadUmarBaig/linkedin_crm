@@ -2,7 +2,7 @@
 // Passively observes the DOM. We never auto-scroll or auto-navigate.
 
 import type { ScrapedPersonInput } from '@crm/shared'
-import { getConfig } from '../lib/storage'
+import { getConfig, isExtensionAlive } from '../lib/storage'
 import {
   recordEngagement,
   recordInspirationPost,
@@ -35,7 +35,26 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 
 let postsObserver: MutationObserver | null = null
 
+// Safe write for the popup's "last capture" hint — no-ops on a dead/invalidated context.
+async function setLastCapture(payload: { kind: string; name?: string; at: string }): Promise<void> {
+  if (!isExtensionAlive()) return
+  try {
+    await chrome.storage.local.set({ lastCapture: payload })
+  } catch {
+    /* context invalidated */
+  }
+}
+
+// Disconnect every observer/timer. Called when the extension context is gone so an orphaned
+// content script on a stale tab stops doing work (and stops throwing).
+function teardownAll() {
+  stopPostsCapture()
+  stopFeedCapture()
+  stopProfileCapture()
+}
+
 async function runExtractors() {
+  if (!isExtensionAlive()) return teardownAll()
   await recordPage(location.href)
 
   // Profile pages — capture the topcard immediately, then keep re-extracting as LinkedIn's
@@ -83,12 +102,10 @@ async function startFeedCapture() {
       if (c.author) await recordPerson(c.author)
       await recordInspirationPost(c.inspirationPost)
     }
-    await chrome.storage.local.set({
-      lastCapture: {
-        kind: 'feed',
-        name: `${captures.length} feed post${captures.length === 1 ? '' : 's'}`,
-        at: new Date().toISOString(),
-      },
+    await setLastCapture({
+      kind: 'feed',
+      name: `${captures.length} feed post${captures.length === 1 ? '' : 's'}`,
+      at: new Date().toISOString(),
     })
     console.log(`[linkedin-crm] captured ${captures.length} feed posts`)
   }
@@ -103,6 +120,10 @@ async function startFeedCapture() {
     scheduled = true
     setTimeout(() => {
       scheduled = false
+      if (!isExtensionAlive()) {
+        teardownAll()
+        return
+      }
       if (!isFeedPage()) {
         stopFeedCapture()
         return
@@ -160,12 +181,10 @@ async function captureProfileOnce(): Promise<void> {
   } else {
     await recordPerson(merged)
   }
-  await chrome.storage.local.set({
-    lastCapture: {
-      kind: isSelf ? 'self-profile' : 'profile',
-      name: merged.fullName,
-      at: new Date().toISOString(),
-    },
+  await setLastCapture({
+    kind: isSelf ? 'self-profile' : 'profile',
+    name: merged.fullName,
+    at: new Date().toISOString(),
   })
 }
 
@@ -181,6 +200,10 @@ async function startProfileCapture() {
   const startedUrl = canonicalProfileUrl(location.href)
   const deadline = Date.now() + 16000
   profileTimer = setInterval(() => {
+    if (!isExtensionAlive()) {
+      teardownAll()
+      return
+    }
     if (canonicalProfileUrl(location.href) !== startedUrl || Date.now() > deadline) {
       stopProfileCapture()
       return
@@ -219,13 +242,11 @@ async function startPostsCapture(ownerSlug: string) {
         }
       }
     }
-    await chrome.storage.local.set({
-      lastCapture: {
-        kind: 'posts',
-        name: `${captures.length} post${captures.length === 1 ? '' : 's'} on ${ownerSlug}` +
-          (totalComments > 0 ? ` (+${totalComments} comments)` : ''),
-        at: new Date().toISOString(),
-      },
+    await setLastCapture({
+      kind: 'posts',
+      name: `${captures.length} post${captures.length === 1 ? '' : 's'} on ${ownerSlug}` +
+        (totalComments > 0 ? ` (+${totalComments} comments)` : ''),
+      at: new Date().toISOString(),
     })
     console.log(
       `[linkedin-crm] captured ${captures.length} posts (+${totalComments} comments) on ${ownerSlug} (self=${selfSlug})`,
@@ -242,6 +263,10 @@ async function startPostsCapture(ownerSlug: string) {
     scheduled = true
     setTimeout(() => {
       scheduled = false
+      if (!isExtensionAlive()) {
+        teardownAll()
+        return
+      }
       // Bail if user has since navigated off the activity page.
       if (activityPageSlug() !== ownerSlug) {
         stopPostsCapture()
