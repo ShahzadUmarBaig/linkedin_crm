@@ -12,7 +12,7 @@ import type {
   ScrapedOwnPostInput,
   ScrapedPersonInput,
 } from '@crm/shared'
-import { firstText, parseCount, parseRelativeTime, text } from '../util'
+import { expandTruncatedText, firstText, parseCount, parseRelativeTime, text } from '../util'
 
 export interface PostCapture {
   // Either we recorded it as the user's own post...
@@ -41,6 +41,9 @@ export function scanPosts(ctx: ScanContext): PostCapture[] {
     const urn = el.getAttribute('data-urn')
     if (!urn || seen.has(urn)) continue
     seen.add(urn)
+
+    // Expand "…more" so we capture the full post body (own-post bodies feed drafting).
+    expandTruncatedText(el)
 
     const capture = extractOnePost(el, urn, ctx)
     if (capture) captures.push(capture)

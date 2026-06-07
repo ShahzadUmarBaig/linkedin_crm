@@ -11,7 +11,7 @@
 // Posts here have no URN we can read, so we synthesize a stable dedup key from author + body.
 
 import type { ScrapedInspirationPostInput, ScrapedMediaType, ScrapedPersonInput } from '@crm/shared'
-import { canonicalProfileUrl, parseRelativeTime, text } from '../util'
+import { canonicalProfileUrl, expandTruncatedText, parseRelativeTime, text } from '../util'
 
 export interface FeedCapture {
   inspirationPost: ScrapedInspirationPostInput
@@ -21,7 +21,11 @@ export interface FeedCapture {
 export function scanFeed(): FeedCapture[] {
   const out: FeedCapture[] = []
   const seen = new Set<string>()
-  for (const el of findFeedContainers()) {
+  const containers = findFeedContainers()
+  // Expand collapsed bodies first. The clicks land async, so this pass may still read truncated
+  // text — the scroll observer's next tick re-reads the now-expanded text under the same urn.
+  containers.forEach(expandTruncatedText)
+  for (const el of containers) {
     const cap = extractFeedPost(el)
     if (!cap) continue
     const key = cap.inspirationPost.linkedinUrn!

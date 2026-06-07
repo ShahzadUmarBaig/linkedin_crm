@@ -84,6 +84,25 @@ export function activityPageSlug(href: string = location.href): string | null {
   }
 }
 
+// Click in-place "…more" / "see more" expanders inside a post so the full body text is in the
+// DOM before we read it. LinkedIn collapses long posts and only renders the rest on click.
+// Scoped to commentary expanders — we skip "see more comments/replies" so we don't load threads.
+// This is the one interaction the content script performs, and only during an active scrape.
+export function expandTruncatedText(root: HTMLElement): void {
+  const candidates = root.querySelectorAll<HTMLElement>('button, [role="button"]')
+  candidates.forEach((el) => {
+    const t = (el.textContent ?? '').trim().toLowerCase()
+    const isExpander = t === '…more' || t === '...more' || t === 'see more' || t === '…see more'
+    if (!isExpander) return
+    if (t.includes('comment') || t.includes('repl')) return
+    try {
+      el.click()
+    } catch {
+      /* ignore — expander may have detached */
+    }
+  })
+}
+
 // Convert LinkedIn's relative time strings into an absolute ISO date, best-effort.
 // Handles all the units LinkedIn ships in the wild:
 //   - seconds: "5s", "30sec", "1 second"
