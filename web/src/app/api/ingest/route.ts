@@ -2,6 +2,7 @@ import { NextResponse, after, type NextRequest } from 'next/server'
 import { ingestBatch } from '@/lib/ingest'
 import { generateIdeas } from '@/lib/ideas'
 import { extractTopicsForUser } from '@/lib/topics'
+import { reoptimizeUpcomingSchedule } from '@/lib/insights'
 import type { ScrapeBatch } from '@crm/shared'
 
 // Extension → CRM ingest endpoint.
@@ -74,6 +75,14 @@ export async function POST(request: NextRequest) {
         }
       } catch (err) {
         console.error('[ideas] generation failed', err)
+      }
+
+      // Fresh metrics may have shifted the best windows — re-pack the upcoming queue.
+      try {
+        const r = await reoptimizeUpcomingSchedule(userId)
+        if (r.moved > 0) console.log(`[schedule] re-optimized ${r.moved} upcoming slot(s)`)
+      } catch (err) {
+        console.error('[schedule] re-optimize failed', err)
       }
     })
 

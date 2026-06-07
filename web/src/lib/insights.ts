@@ -105,6 +105,12 @@ export async function pickOptimalSlot(
   opts?: { now?: Date; avoidIsos?: string[] },
 ): Promise<OptimalSlot> {
   const insights = await getPostingInsights(userId)
+  return pickSlotFromInsights(insights, opts)
+}
+
+// Pure slot-finder — given already-computed insights. Lets a re-optimize pass place many slots
+// without recomputing insights each time.
+export function pickSlotFromInsights(insights: PostingInsights, opts?: { now?: Date; avoidIsos?: string[] }): OptimalSlot {
   const now = opts?.now ?? new Date()
   const earliest = now.getTime() + 24 * 3600_000
   const avoid = (opts?.avoidIsos ?? []).map((s) => new Date(s).getTime()).filter((t) => !isNaN(t))
@@ -124,7 +130,7 @@ export async function pickOptimalSlot(
     if (collides(t)) continue
     const dayName = DAY_NAMES[d.getUTCDay()]
     const reasoning = useData
-      ? `Your posts perform best on ${dayName}s around ${pad(hour)}:00 UTC — scheduled there.`
+      ? `Your posts perform best on ${dayName}s around ${pad(hour)}:00 UTC — auto-scheduled there.`
       : `Default weekday-morning slot (${dayName} ${pad(hour)}:00 UTC). Will optimize once you have more posts.`
     return { iso: d.toISOString(), reasoning, dataDriven: useData }
   }
@@ -132,6 +138,50 @@ export async function pickOptimalSlot(
   // Couldn't place within 4 weeks (heavy collisions) — just go 25h out.
   const d = new Date(earliest + 3600_000)
   return { iso: d.toISOString(), reasoning: 'Next available slot.', dataDriven: false }
+}
+
+// Re-pack the upcoming AI-scheduled queue into the current best windows. Runs automatically on
+// scrape + nightly, so timing self-corrects as data grows — with zero user action.
+// Rules: only touch future, AI-chosen slots > 36h out (don't disturb imminent or manually-pinned
+// posts); keep their order; avoid colliding with manual pins.
+export async function reoptimizeUpcomingSchedule(userId: string): Promise<{ moved: number }> {
+  const supabase = createSupabaseServiceClient()
+  const insights = await getPostingInsights(userId)
+  const now = new Date()
+  const cutoff = now.getTime() + 36 * 3600_000
+
+  const { data: slots } = await supabase
+    .from('calendar_slots')
+    .select('id, scheduled_for, ai_chosen')
+    .eq('user_id', userId)
+    .eq('status', 'scheduled')
+    .gte('scheduled_for', now.toISOString())
+    .order('scheduled_for', { ascending: true })
+  const rows = (slots ?? []) as { id: string; scheduled_for: string; ai_chosen: boolean }[]
+
+  // Manual pins + imminent posts are fixed points we schedule around.
+  const fixed = rows.filter((s) => !s.ai_chosen || new Date(s.scheduled_for).getTime() <= cutoff)
+  const movable = rows.filter((s) => s.ai_chosen && new Date(s.scheduled_for).getTime() > cutoff)
+  if (movable.length === 0) return { moved: 0 }
+
+  const assigned: string[] = fixed.map((s) => s.scheduled_for)
+  let cursor = new Date(Math.max(now.getTime(), cutoff))
+  let moved = 0
+
+  for (const slot of movable) {
+    const opt = pickSlotFromInsights(insights, { now: cursor, avoidIsos: assigned })
+    assigned.push(opt.iso)
+    cursor = new Date(opt.iso)
+    if (opt.iso !== slot.scheduled_for) {
+      const { error } = await supabase
+        .from('calendar_slots')
+        .update({ scheduled_for: opt.iso, ai_reasoning: opt.reasoning })
+        .eq('id', slot.id)
+        .eq('user_id', userId)
+      if (!error) moved += 1
+    }
+  }
+  return { moved }
 }
 
 // ---------- helpers ----------
