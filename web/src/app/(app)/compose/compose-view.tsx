@@ -4,6 +4,7 @@ import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { regenerateDraftAction, rescheduleSlotAction, updateDraftBodyAction } from '@/app/actions/calendar'
+import { generateImagesAction, selectImageAction } from '@/app/actions/images'
 import type { CalendarSlotView } from '@/lib/calendar'
 import { formatDate, formatDateTime, truncate } from '@/lib/format'
 import { PublishFlow } from '../publish-flow'
@@ -26,6 +27,9 @@ export function ComposeView({ view, drafts = [] }: { view: CalendarSlotView; dra
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
 
   const [imagePrompt, setImagePrompt] = useState(view.draft_image_prompt ?? '')
+  const [images, setImages] = useState<string[]>(view.draft_image_urls ?? [])
+  const [selectedImage, setSelectedImage] = useState<string | null>(view.draft_selected_image_url ?? null)
+  const [genImg, startGenImg] = useTransition()
   const [rescheduling, setRescheduling] = useState(false)
   const [when, setWhen] = useState(toLocalInput(view.scheduled_for))
   const [busy, startBusy] = useTransition()
@@ -49,6 +53,23 @@ export function ComposeView({ view, drafts = [] }: { view: CalendarSlotView; dra
   function copyImagePrompt() {
     void navigator.clipboard.writeText(imagePrompt)
     setMsg({ kind: 'ok', text: 'Image prompt copied.' })
+  }
+
+  function generateImages() {
+    if (!view.draft_id) return
+    setMsg(null)
+    startGenImg(async () => {
+      const r = await generateImagesAction(view.draft_id!, imagePrompt)
+      if ('error' in r) return setMsg({ kind: 'err', text: r.error })
+      setImages(r.urls)
+      setSelectedImage(r.urls[0] ?? null)
+      setMsg({ kind: 'ok', text: `Generated ${r.urls.length} image${r.urls.length === 1 ? '' : 's'} — click to pick one.` })
+    })
+  }
+
+  function pickImage(url: string) {
+    setSelectedImage(url)
+    if (view.draft_id) void selectImageAction(view.draft_id, url)
   }
 
   function regenerate() {
@@ -173,18 +194,47 @@ export function ComposeView({ view, drafts = [] }: { view: CalendarSlotView; dra
             onChange={(e) => setImagePrompt(e.target.value)}
           />
           <div className="row gap6 mt12">
-            <button className="btn primary sm" disabled title="AI image generation isn't wired up yet">
-              <span className="ico" />Generate 2
+            <button className="btn primary sm" onClick={generateImages} disabled={genImg || !imagePrompt.trim()}>
+              <span className="ico" />{genImg ? 'Generating…' : images.length ? 'Regenerate 2' : 'Generate 2'}
             </button>
             <button className="btn ghost sm" onClick={copyImagePrompt} disabled={!imagePrompt.trim()}>Copy prompt</button>
           </div>
           <div className="g2 mt16" style={{ gap: 10 }}>
-            <div className="imgph" style={{ height: 130 }}>VISUAL 1 · soon</div>
-            <div className="imgph" style={{ height: 130 }}>VISUAL 2 · soon</div>
+            {[0, 1].map((i) => {
+              const url = images[i]
+              if (!url) {
+                return <div key={i} className="imgph" style={{ height: 150 }}>{genImg ? 'Generating…' : `OPTION ${i + 1}`}</div>
+              }
+              const active = url === selectedImage
+              return (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => pickImage(url)}
+                  style={{ padding: 0, border: 'none', background: 'none', cursor: 'pointer', borderRadius: 6 }}
+                  title={active ? 'Selected' : 'Click to select'}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={url}
+                    alt={`Option ${i + 1}`}
+                    style={{
+                      width: '100%',
+                      height: 150,
+                      objectFit: 'cover',
+                      borderRadius: 6,
+                      outline: active ? '2px solid var(--accent)' : '1px solid var(--line)',
+                      outlineOffset: active ? 2 : 0,
+                    }}
+                  />
+                </button>
+              )
+            })}
           </div>
           <div className="note mt16">
-            In-app generation (“nano banana”) isn&apos;t wired yet — for now, copy this prompt into your
-            image tool, generate <b>2</b> options, and attach the one you like on LinkedIn.
+            {images.length
+              ? 'Click an image to select it — the selected one downloads when you publish.'
+              : 'Generates 2 options with Gemini 2.5 Flash Image (“nano banana”). Needs a Google API key in Settings.'}
           </div>
         </div>
       </div>
@@ -212,6 +262,10 @@ export function ComposeView({ view, drafts = [] }: { view: CalendarSlotView; dra
                 <p style={{ color: 'var(--faint)' }}>Your post text appears here…</p>
               )}
             </div>
+            {selectedImage && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={selectedImage} alt="" style={{ width: '100%', display: 'block', borderTop: '1px solid var(--line)' }} />
+            )}
             <div className="li-actions">
               <span>👍 Like</span><span>💬 Comment</span><span>↻ Repost</span><span>➤ Send</span>
             </div>
@@ -253,7 +307,7 @@ export function ComposeView({ view, drafts = [] }: { view: CalendarSlotView; dra
             {dirty && (
               <div className="note">Save your edits before publishing so the copied caption matches.</div>
             )}
-            <PublishFlow slotId={view.slot_id} caption={body} />
+            <PublishFlow slotId={view.slot_id} caption={body} images={selectedImage ? [selectedImage] : []} />
             <div className="row gap8">
               {dirty && (
                 <button className="btn ghost grow" onClick={save} disabled={saving}>Save edits</button>

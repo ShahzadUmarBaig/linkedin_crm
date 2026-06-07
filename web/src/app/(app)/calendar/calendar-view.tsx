@@ -151,7 +151,7 @@ export function CalendarView({ upcoming, posted, skipped }: Props) {
                         </div>
                         <Link className="btn ghost sm" href={`/compose?slot=${s.slot_id}`}>Edit →</Link>
                       </div>
-                      <PublishFlow slotId={s.slot_id} caption={s.draft_body ?? ''} />
+                      <PublishFlow slotId={s.slot_id} caption={s.draft_body ?? ''} images={s.draft_selected_image_url ? [s.draft_selected_image_url] : []} />
                     </div>
                   ))}
                 </div>
@@ -246,7 +246,11 @@ function SlotDetail({ slot, onClose }: { slot: CalendarSlotView; onClose: () => 
 
       {!readonly && !rescheduling && (
         <div className="mt16">
-          <PublishFlow slotId={slot.slot_id} caption={editing ? body : slot.draft_body ?? ''} />
+          <PublishFlow
+            slotId={slot.slot_id}
+            caption={editing ? body : slot.draft_body ?? ''}
+            images={slot.draft_selected_image_url ? [slot.draft_selected_image_url] : []}
+          />
         </div>
       )}
 
