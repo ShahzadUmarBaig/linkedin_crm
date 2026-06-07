@@ -1,8 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useTransition } from 'react'
+import { useRouter } from 'next/navigation'
 import type { SignalsData, SignalPost, SignalPerson, SignalEngagement } from '@/lib/signals'
 import { compactNumber, formatDateTime, relativeTime } from '@/lib/format'
+import { extractTopicsAction } from '@/app/actions/topics'
 
 type Tab = 'overview' | 'posts' | 'feed' | 'people' | 'engagements'
 
@@ -68,12 +70,37 @@ function Stat({ label, value }: { label: string; value: number }) {
 }
 
 function Overview({ data }: { data: SignalsData }) {
+  const router = useRouter()
+  const [running, start] = useTransition()
+  const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+
+  function runExtract() {
+    setMsg(null)
+    start(async () => {
+      const r = await extractTopicsAction()
+      if ('error' in r) return setMsg({ kind: 'err', text: r.error })
+      if (r.skipped) return setMsg({ kind: 'ok', text: r.reason ?? 'Nothing to tag.' })
+      setMsg({
+        kind: 'ok',
+        text: `Tagged ${r.processed} post${r.processed === 1 ? '' : 's'}` +
+          (r.costUsd != null ? ` ($${r.costUsd.toFixed(4)})` : '') + '. Refreshing…',
+      })
+      router.refresh()
+    })
+  }
+
   return (
     <div className="g2" style={{ alignItems: 'start' }}>
       <div className="box pad-lg">
-        <div className="h-sec" style={{ marginBottom: 12 }}>Detected trends (drives Ideas)</div>
+        <div className="row between center" style={{ marginBottom: 12 }}>
+          <div className="h-sec">Detected trends (drives Ideas)</div>
+          <button className="btn ghost sm" onClick={runExtract} disabled={running}>
+            {running ? 'Tagging…' : 'Extract topics'}
+          </button>
+        </div>
+        {msg && <div className={`banner ${msg.kind === 'ok' ? 'ok' : 'err'} mb16`}>{msg.text}</div>}
         {data.trends.length === 0 ? (
-          <div className="note">No trends yet — topics are extracted from feed posts on each scrape.</div>
+          <div className="note">No trends yet — click <b>Extract topics</b> to tag your scraped posts, or they&apos;ll be tagged automatically on the next scrape.</div>
         ) : (
           <div className="stack gap10">
             {data.trends.map((t) => (

@@ -1,6 +1,7 @@
 import { NextResponse, after, type NextRequest } from 'next/server'
 import { ingestBatch } from '@/lib/ingest'
 import { generateIdeas } from '@/lib/ideas'
+import { extractTopicsForUser } from '@/lib/topics'
 import type { ScrapeBatch } from '@crm/shared'
 
 // Extension → CRM ingest endpoint.
@@ -57,6 +58,13 @@ export async function POST(request: NextRequest) {
     // Trigger idea generation in the background — the user doesn't wait on it,
     // and failures here don't affect the ingest response.
     after(async () => {
+      // Tag newly-ingested posts with topics first so trends + idea generation see fresh signal.
+      try {
+        const t = await extractTopicsForUser(userId, { scrapeRunId: result.scrapeRunId })
+        if (!t.skipped) console.log(`[topics] tagged ${t.processed} posts (cost $${(t.costUsd ?? 0).toFixed(4)}, model ${t.model})`)
+      } catch (err) {
+        console.error('[topics] extraction failed', err)
+      }
       try {
         const r = await generateIdeas(userId, { scrapeRunId: result.scrapeRunId })
         if (r.skipped) {
