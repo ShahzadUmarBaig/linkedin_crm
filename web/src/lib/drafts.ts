@@ -317,6 +317,8 @@ imagePrompt rules (written FOR the FLUX.1 model — accuracy over length):
 - Use POSITIVE phrasing only — describe what SHOULD appear. FLUX ignores negative/"avoid" lists, so never write "no X". To keep it clean, instead say things like "a wordless, uncluttered composition" rather than "no text".
 - Explicitly request "landscape orientation, no text or lettering, no logos, no watermarks" as a short positive clause (FLUX honors a brief in-prompt instruction better than a long avoid-list).
 - Pick a metaphor that genuinely reinforces THIS post's message; avoid generic stock-photo cliches (handshakes, glowing brains, ascending arrows).
+- CRITICAL: never describe clusters of small abstract icons, symbols, glyphs, or "floating UI elements" — FLUX renders those as unreadable squiggles. Choose ONE clear, concretely-renderable real object/scene as the subject (a physical object, a real device, a tangible material, a real environment). If a metaphor needs a "tool", make it one recognizable real tool rendered cleanly, not a constellation of vague tech icons.
+- Prefer real, photographable or cleanly-3D-renderable things over abstract holographic projections.
 - End with 3-5 quality tags: "high detail, sharp focus, professional, 4k".`
 
 function buildUserPrompt(args: {
