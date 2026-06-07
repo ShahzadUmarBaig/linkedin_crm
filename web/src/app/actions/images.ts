@@ -10,7 +10,7 @@ export async function generateImagesAction(
 ): Promise<{ error: string } | { ok: true; urls: string[] }> {
   const user = await requireUser()
   try {
-    const { urls } = await generatePostImages(user.id, draftId, prompt, 2)
+    const { urls } = await generatePostImages(user.id, draftId, prompt, 1)
     revalidatePath('/compose')
     revalidatePath('/calendar')
     return { ok: true, urls }

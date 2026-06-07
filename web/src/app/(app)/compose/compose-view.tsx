@@ -63,7 +63,7 @@ export function ComposeView({ view, drafts = [] }: { view: CalendarSlotView; dra
       if ('error' in r) return setMsg({ kind: 'err', text: r.error })
       setImages(r.urls)
       setSelectedImage(r.urls[0] ?? null)
-      setMsg({ kind: 'ok', text: `Generated ${r.urls.length} image${r.urls.length === 1 ? '' : 's'} — click to pick one.` })
+      setMsg({ kind: 'ok', text: 'Image generated.' })
     })
   }
 
@@ -180,61 +180,41 @@ export function ComposeView({ view, drafts = [] }: { view: CalendarSlotView; dra
         <div className="box pad-lg">
           <div className="row between center" style={{ marginBottom: 12 }}>
             <div className="h-sec">Visual</div>
-            <span className="tag auto"><span className="dot" />nano banana</span>
+            <span className="tag auto"><span className="dot" />FLUX.1</span>
           </div>
           <div className="row between center" style={{ marginBottom: 6 }}>
-            <span className="eyebrow">Detailed image prompt — edit before generating</span>
+            <span className="eyebrow">Image prompt — edit before generating</span>
             <span className="eyebrow">{wordCount(imagePrompt)} words</span>
           </div>
           <textarea
             className="field mono"
-            style={{ minHeight: 220, fontSize: 12, lineHeight: 1.55 }}
+            style={{ minHeight: 200, fontSize: 12, lineHeight: 1.55 }}
             value={imagePrompt}
             placeholder={FALLBACK_IMAGE_PROMPT}
             onChange={(e) => setImagePrompt(e.target.value)}
           />
           <div className="row gap6 mt12">
             <button className="btn primary sm" onClick={generateImages} disabled={genImg || !imagePrompt.trim()}>
-              <span className="ico" />{genImg ? 'Generating…' : images.length ? 'Regenerate 2' : 'Generate 2'}
+              <span className="ico" />{genImg ? 'Generating…' : images.length ? 'Regenerate' : 'Generate image'}
             </button>
             <button className="btn ghost sm" onClick={copyImagePrompt} disabled={!imagePrompt.trim()}>Copy prompt</button>
           </div>
-          <div className="g2 mt16" style={{ gap: 10 }}>
-            {[0, 1].map((i) => {
-              const url = images[i]
-              if (!url) {
-                return <div key={i} className="imgph" style={{ height: 150 }}>{genImg ? 'Generating…' : `OPTION ${i + 1}`}</div>
-              }
-              const active = url === selectedImage
-              return (
-                <button
-                  key={i}
-                  type="button"
-                  onClick={() => pickImage(url)}
-                  style={{ padding: 0, border: 'none', background: 'none', cursor: 'pointer', borderRadius: 6 }}
-                  title={active ? 'Selected' : 'Click to select'}
-                >
-                  {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img
-                    src={url}
-                    alt={`Option ${i + 1}`}
-                    style={{
-                      width: '100%',
-                      height: 150,
-                      objectFit: 'cover',
-                      borderRadius: 6,
-                      outline: active ? '2px solid var(--accent)' : '1px solid var(--line)',
-                      outlineOffset: active ? 2 : 0,
-                    }}
-                  />
-                </button>
-              )
-            })}
+          <div className="mt16">
+            {images[0] ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={images[0]}
+                alt="Generated visual"
+                style={{ width: '100%', borderRadius: 6, border: '1px solid var(--line)', display: 'block' }}
+              />
+            ) : (
+              <div className="imgph" style={{ height: 200 }}>{genImg ? 'Generating…' : 'VISUAL'}</div>
+            )}
           </div>
           <div className="note mt16">
-            {images.length
-              ? 'Click an image to select it — the selected one downloads when you publish.'
-              : 'Generates 2 options with Gemini 2.5 Flash Image (“nano banana”). Needs a Google API key in Settings.'}
+            {images[0]
+              ? 'This image is attached — it downloads when you publish. Edit the prompt and Regenerate for a different take.'
+              : 'Generates one image with FLUX.1 (fal.ai). Needs FALAIKEY configured.'}
           </div>
         </div>
       </div>

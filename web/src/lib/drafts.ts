@@ -117,7 +117,7 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
   // image failure (no Google key, transient API error) block the approval.
   if (parsed.imagePrompt) {
     try {
-      await generatePostImages(userId, draft.id, parsed.imagePrompt, 2)
+      await generatePostImages(userId, draft.id, parsed.imagePrompt, 1)
     } catch (err) {
       console.error('[approve] image generation failed (draft still created)', err)
     }
@@ -301,7 +301,7 @@ Return ONLY a JSON object (no prose, no markdown fences):
   "body": "The full LinkedIn post. 150-300 words. The provided 'hook' MUST be line 1 verbatim or near-verbatim. Use LinkedIn formatting: short paragraphs, blank lines between thoughts. End with a question or CTA, THEN a final line with 3-5 relevant hashtags. Match the user's tone EXACTLY.",
   "scheduledFor": "ISO 8601 datetime in UTC. Must be at least 24 hours from the current time. Must not duplicate any time already in 'existingSlotsIso'. Pick a slot consistent with the user's past best-engagement windows; if there's no signal, default to a weekday morning (Tue/Wed/Thu around 14:00 UTC = 9am ET).",
   "schedulingReasoning": "One short sentence on WHY this slot. Reference the history data if it informed the choice.",
-  "imagePrompt": "A SINGLE detailed image-generation prompt, AT LEAST 400 words, for an AI image model. Describe ONE cohesive visual that complements the post. Cover, in rich detail: the core subject/scene and what it conveys; composition & framing (rule of thirds, focal point, negative space for text overlay); art style (e.g. minimal 3D render, editorial flat illustration, cinematic photo); exact color palette with hex-like descriptions and how it ties to a calm professional LinkedIn aesthetic; lighting (direction, softness, mood); mood & emotional tone; specific objects/metaphors that reinforce the post's message; background treatment; texture & material detail; depth of field; perspective/camera angle; aspect ratio 1.91:1 (landscape, LinkedIn-optimal); and a short list of things to AVOID (no text/words in the image, no logos, no clutter, no stock-photo cliches). Be concrete and vivid, not generic."
+  "imagePrompt": "ONE rock-solid prompt for the FLUX.1 text-to-image model that reliably yields a single, accurate, professional LinkedIn visual. See the imagePrompt rules below for exactly how to write it."
 }
 
 Rules:
@@ -309,7 +309,15 @@ Rules:
 - The body must NOT mention the source/inspiration post directly.
 - The body should sound like the user wrote it from scratch, not like an AI summary.
 - Avoid generic LinkedIn cliches ("excited to share", "I'm thrilled", "let me know your thoughts").
-- imagePrompt must be ONE prompt (not 2), at least 400 words, vivid and specific.`
+
+imagePrompt rules (written FOR the FLUX.1 model — accuracy over length):
+- ONE single paragraph, ~120-200 words. FLUX follows focused prompts far more accurately than bloated ones, so be vivid but tight — do NOT pad to 400 words.
+- FRONT-LOAD the concrete main subject in the first sentence (one clear focal subject — FLUX is most accurate with a single subject, not a busy scene).
+- Then describe, in order: the art style (e.g. "clean minimal 3D render", "editorial flat vector illustration", "soft cinematic photograph"), composition & framing (focal point, generous negative space), color palette (2-3 specific colors on a calm, professional LinkedIn aesthetic), lighting (direction + softness), and overall mood.
+- Use POSITIVE phrasing only — describe what SHOULD appear. FLUX ignores negative/"avoid" lists, so never write "no X". To keep it clean, instead say things like "a wordless, uncluttered composition" rather than "no text".
+- Explicitly request "landscape orientation, no text or lettering, no logos, no watermarks" as a short positive clause (FLUX honors a brief in-prompt instruction better than a long avoid-list).
+- Pick a metaphor that genuinely reinforces THIS post's message; avoid generic stock-photo cliches (handshakes, glowing brains, ascending arrows).
+- End with 3-5 quality tags: "high detail, sharp focus, professional, 4k".`
 
 function buildUserPrompt(args: {
   profile: ProfileContext
