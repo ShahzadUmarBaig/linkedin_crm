@@ -3,12 +3,14 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { updateDraftBodyAction } from '@/app/actions/calendar'
+import { regenerateDraftAction, rescheduleSlotAction, updateDraftBodyAction } from '@/app/actions/calendar'
 import type { CalendarSlotView } from '@/lib/calendar'
 import { formatDateTime } from '@/lib/format'
 import { PublishFlow } from '../publish-flow'
 
 const MAX = 3000
+const FALLBACK_IMAGE_PROMPT =
+  'No image prompt yet — regenerate this draft (or approve a fresh idea) to get a detailed prompt.'
 
 export function ComposeView({ view }: { view: CalendarSlotView }) {
   const router = useRouter()
@@ -16,6 +18,11 @@ export function ComposeView({ view }: { view: CalendarSlotView }) {
   const [dirty, setDirty] = useState(false)
   const [saving, startSave] = useTransition()
   const [msg, setMsg] = useState<{ kind: 'ok' | 'err'; text: string } | null>(null)
+
+  const [imagePrompt, setImagePrompt] = useState(view.draft_image_prompt ?? '')
+  const [rescheduling, setRescheduling] = useState(false)
+  const [when, setWhen] = useState(toLocalInput(view.scheduled_for))
+  const [busy, startBusy] = useTransition()
 
   function save() {
     if (!view.draft_id) return
@@ -31,6 +38,37 @@ export function ComposeView({ view }: { view: CalendarSlotView }) {
   function copy() {
     void navigator.clipboard.writeText(body)
     setMsg({ kind: 'ok', text: 'Copied to clipboard.' })
+  }
+
+  function copyImagePrompt() {
+    void navigator.clipboard.writeText(imagePrompt)
+    setMsg({ kind: 'ok', text: 'Image prompt copied.' })
+  }
+
+  function regenerate() {
+    if (!view.draft_id) return
+    setMsg(null)
+    startBusy(async () => {
+      const r = await regenerateDraftAction(view.draft_id!)
+      if ('error' in r) return setMsg({ kind: 'err', text: r.error })
+      setBody(r.body)
+      setImagePrompt(r.imagePrompt ?? '')
+      setDirty(false)
+      setMsg({ kind: 'ok', text: 'Regenerated with hashtags + detailed image prompt.' })
+    })
+  }
+
+  function reschedule() {
+    const iso = fromLocalInput(when)
+    if (!iso) return setMsg({ kind: 'err', text: 'Invalid date/time.' })
+    setMsg(null)
+    startBusy(async () => {
+      const r = await rescheduleSlotAction(view.slot_id, iso)
+      if (r.error) return setMsg({ kind: 'err', text: r.error })
+      setRescheduling(false)
+      setMsg({ kind: 'ok', text: 'Rescheduled.' })
+      router.refresh()
+    })
   }
 
   return (
@@ -77,6 +115,9 @@ export function ComposeView({ view }: { view: CalendarSlotView }) {
                 {saving ? 'Saving…' : 'Save edits'}
               </button>
               <button className="btn ghost sm" onClick={copy}>Copy</button>
+              <button className="btn ghost sm" onClick={regenerate} disabled={busy} title="Re-run the AI with hashtags + image prompt">
+                {busy ? 'Regenerating…' : 'Regenerate'}
+              </button>
             </div>
             <span className="eyebrow">{body.length} / {MAX}</span>
           </div>
@@ -85,34 +126,36 @@ export function ComposeView({ view }: { view: CalendarSlotView }) {
           </div>
         </div>
 
-        {/* RIGHT: visual (stub) */}
+        {/* RIGHT: visual */}
         <div className="box pad-lg">
           <div className="row between center" style={{ marginBottom: 12 }}>
             <div className="h-sec">Visual</div>
-            <span className="tag"><span className="dot" />coming soon</span>
+            <span className="tag auto"><span className="dot" />nano banana</span>
           </div>
-          <span className="eyebrow">Auto-suggested prompt — edit before generating</span>
-          <div className="box mt8" style={{ background: 'var(--panel-2)', padding: 12 }}>
-            <p style={{ margin: 0, fontSize: 12.5, fontFamily: 'var(--mono)', lineHeight: 1.5, color: 'var(--ink)' }}>
-              Minimal 3D illustration on a muted blue accent with lots of negative space, reflecting
-              the post&apos;s theme.
-            </p>
+          <div className="row between center" style={{ marginBottom: 6 }}>
+            <span className="eyebrow">Detailed image prompt — edit before generating</span>
+            <span className="eyebrow">{wordCount(imagePrompt)} words</span>
           </div>
+          <textarea
+            className="field mono"
+            style={{ minHeight: 220, fontSize: 12, lineHeight: 1.55 }}
+            value={imagePrompt}
+            placeholder={FALLBACK_IMAGE_PROMPT}
+            onChange={(e) => setImagePrompt(e.target.value)}
+          />
           <div className="row gap6 mt12">
             <button className="btn primary sm" disabled title="AI image generation isn't wired up yet">
-              <span className="ico" />Generate 4
+              <span className="ico" />Generate 2
             </button>
-            <button className="btn ghost sm" disabled>Upload instead</button>
+            <button className="btn ghost sm" onClick={copyImagePrompt} disabled={!imagePrompt.trim()}>Copy prompt</button>
           </div>
           <div className="g2 mt16" style={{ gap: 10 }}>
-            <div className="imgph" style={{ height: 104 }}>VISUAL · soon</div>
-            <div className="imgph" style={{ height: 104 }}>VISUAL · soon</div>
-            <div className="imgph" style={{ height: 104 }}>VISUAL · soon</div>
-            <div className="imgph" style={{ height: 104 }}>VISUAL · soon</div>
+            <div className="imgph" style={{ height: 130 }}>VISUAL 1 · soon</div>
+            <div className="imgph" style={{ height: 130 }}>VISUAL 2 · soon</div>
           </div>
           <div className="note mt16">
-            AI image generation (“nano banana”) isn&apos;t live yet. For now, post text-only or attach
-            your own image on LinkedIn.
+            In-app generation (“nano banana”) isn&apos;t wired yet — for now, copy this prompt into your
+            image tool, generate <b>2</b> options, and attach the one you like on LinkedIn.
           </div>
         </div>
       </div>
@@ -152,11 +195,23 @@ export function ComposeView({ view }: { view: CalendarSlotView }) {
               then post it manually when its time comes.
             </div>
             <div className="box pad" style={{ background: 'var(--panel-2)' }}>
-              <div className="row between center">
+              <div className="row between center gap8">
                 <span className="eyebrow">Scheduled for</span>
-                <span className="tag human"><span className="dot" />{formatDateTime(view.scheduled_for)}</span>
+                <div className="row gap8 center">
+                  <span className="tag human"><span className="dot" />{formatDateTime(view.scheduled_for)}</span>
+                  {!rescheduling && (
+                    <button className="btn ghost sm" onClick={() => setRescheduling(true)}>Reschedule</button>
+                  )}
+                </div>
               </div>
-              {view.ai_reasoning && (
+              {rescheduling && (
+                <div className="row gap8 mt12 wrap">
+                  <input type="datetime-local" className="field" style={{ width: 'auto', flex: 1 }} value={when} onChange={(e) => setWhen(e.target.value)} />
+                  <button className="btn primary sm" onClick={reschedule} disabled={busy}>{busy ? 'Saving…' : 'Save time'}</button>
+                  <button className="btn ghost sm" onClick={() => setRescheduling(false)}>Cancel</button>
+                </div>
+              )}
+              {view.ai_reasoning && !rescheduling && (
                 <>
                   <div className="divider" style={{ margin: '10px 0' }} />
                   <div className="row between center gap8">
@@ -182,4 +237,21 @@ export function ComposeView({ view }: { view: CalendarSlotView }) {
       </div>
     </>
   )
+}
+
+function wordCount(s: string): number {
+  const t = s.trim()
+  return t ? t.split(/\s+/).length : 0
+}
+
+function toLocalInput(iso: string): string {
+  const d = new Date(iso)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
+function fromLocalInput(local: string): string | null {
+  if (!local) return null
+  const d = new Date(local)
+  return isNaN(d.getTime()) ? null : d.toISOString()
 }

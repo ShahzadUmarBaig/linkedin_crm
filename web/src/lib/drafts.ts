@@ -78,6 +78,7 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
       user_id: userId,
       idea_id: ideaId,
       body: parsed.body,
+      image_prompt: parsed.imagePrompt,
       version: 1,
       ai_run_id: response.aiRunId || null,
     })
@@ -115,6 +116,56 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
     costUsd: response.costUsd,
     model: response.model,
   }
+}
+
+// Re-run draft generation for an existing draft (e.g. to pick up new prompt rules like hashtags
+// + the detailed image prompt) without touching its calendar slot.
+export async function regenerateDraft(
+  userId: string,
+  draftId: string,
+): Promise<{ body: string; imagePrompt: string | null }> {
+  const supabase = createSupabaseServiceClient()
+
+  const { data: draft } = await supabase
+    .from('drafts')
+    .select('id, idea_id')
+    .eq('id', draftId)
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (!draft?.idea_id) throw new Error('Draft or its idea not found.')
+
+  const { data: idea } = await supabase.from('ideas').select('*').eq('id', draft.idea_id).eq('user_id', userId).maybeSingle()
+  if (!idea) throw new Error('Idea not found.')
+
+  const [{ data: profile }, sourceBody, historyByHour, upcomingSlots] = await Promise.all([
+    supabase.from('profile').select('niche, audience, tone, pillars, posting_frequency_per_week').eq('user_id', userId).maybeSingle(),
+    loadSourceBody(supabase, userId, idea as IdeaRow),
+    loadEngagementHistory(supabase, userId),
+    loadUpcomingSlots(supabase, userId),
+  ])
+  if (!profile) throw new Error('Profile not set.')
+
+  const user = buildUserPrompt({
+    profile: profile as ProfileContext,
+    idea: idea as IdeaRow,
+    sourceBody,
+    historyByHour,
+    upcomingSlotIsos: upcomingSlots,
+    now: new Date(),
+  })
+
+  const response = await generate({ userId, task: 'draft_write', system: SYSTEM_PROMPT, user, maxTokens: 4096 })
+  const parsed = parseDraftResponse(response.text)
+  if (!parsed) throw new Error('AI did not return a valid draft. Try again.')
+
+  const { error } = await supabase
+    .from('drafts')
+    .update({ body: parsed.body, image_prompt: parsed.imagePrompt, ai_run_id: response.aiRunId || null, updated_at: new Date().toISOString() })
+    .eq('id', draftId)
+    .eq('user_id', userId)
+  if (error) throw new Error(`draft update: ${error.message}`)
+
+  return { body: parsed.body, imagePrompt: parsed.imagePrompt }
 }
 
 // ---------- context loaders ----------
@@ -227,21 +278,23 @@ interface ProfileContext {
   posting_frequency_per_week: number
 }
 
-const SYSTEM_PROMPT = `You complete an approved LinkedIn post idea into (a) a publishable draft AND
-(b) the optimal date/time to post it.
+const SYSTEM_PROMPT = `You complete an approved LinkedIn post idea into (a) a publishable draft, (b) the
+optimal date/time to post it, and (c) a detailed image-generation prompt.
 
 Return ONLY a JSON object (no prose, no markdown fences):
 {
-  "body": "The full LinkedIn post. 150-300 words. The provided 'hook' MUST be line 1 verbatim or near-verbatim. Use LinkedIn formatting: short paragraphs, blank lines between thoughts. End with a question, CTA, or strong closing line. Match the user's tone EXACTLY.",
+  "body": "The full LinkedIn post. 150-300 words. The provided 'hook' MUST be line 1 verbatim or near-verbatim. Use LinkedIn formatting: short paragraphs, blank lines between thoughts. End with a question or CTA, THEN a final line with 3-5 relevant hashtags. Match the user's tone EXACTLY.",
   "scheduledFor": "ISO 8601 datetime in UTC. Must be at least 24 hours from the current time. Must not duplicate any time already in 'existingSlotsIso'. Pick a slot consistent with the user's past best-engagement windows; if there's no signal, default to a weekday morning (Tue/Wed/Thu around 14:00 UTC = 9am ET).",
-  "schedulingReasoning": "One short sentence on WHY this slot. Reference the history data if it informed the choice."
+  "schedulingReasoning": "One short sentence on WHY this slot. Reference the history data if it informed the choice.",
+  "imagePrompt": "A SINGLE detailed image-generation prompt, AT LEAST 400 words, for an AI image model. Describe ONE cohesive visual that complements the post. Cover, in rich detail: the core subject/scene and what it conveys; composition & framing (rule of thirds, focal point, negative space for text overlay); art style (e.g. minimal 3D render, editorial flat illustration, cinematic photo); exact color palette with hex-like descriptions and how it ties to a calm professional LinkedIn aesthetic; lighting (direction, softness, mood); mood & emotional tone; specific objects/metaphors that reinforce the post's message; background treatment; texture & material detail; depth of field; perspective/camera angle; aspect ratio 1.91:1 (landscape, LinkedIn-optimal); and a short list of things to AVOID (no text/words in the image, no logos, no clutter, no stock-photo cliches). Be concrete and vivid, not generic."
 }
 
 Rules:
-- The body must NOT include hashtags unless they appear in the user's past posts as a stylistic norm.
+- The body MUST end with a final line of 3-5 relevant hashtags (mix of 1-2 broad + 2-3 niche). Use the user's pillars/topics to pick them. CamelCase multi-word tags (e.g. #SoftwareEngineering).
 - The body must NOT mention the source/inspiration post directly.
 - The body should sound like the user wrote it from scratch, not like an AI summary.
-- Avoid generic LinkedIn cliches ("excited to share", "I'm thrilled", "let me know your thoughts").`
+- Avoid generic LinkedIn cliches ("excited to share", "I'm thrilled", "let me know your thoughts").
+- imagePrompt must be ONE prompt (not 2), at least 400 words, vivid and specific.`
 
 function buildUserPrompt(args: {
   profile: ProfileContext
@@ -314,6 +367,7 @@ interface ParsedDraftResponse {
   body: string
   scheduledFor: string
   schedulingReasoning: string
+  imagePrompt: string | null
 }
 
 function parseDraftResponse(text: string): ParsedDraftResponse | null {
@@ -339,6 +393,7 @@ function parseDraftResponse(text: string): ParsedDraftResponse | null {
   const body = String(o.body ?? '').trim()
   const scheduledForRaw = String(o.scheduledFor ?? '').trim()
   const schedulingReasoning = String(o.schedulingReasoning ?? '').trim()
+  const imagePrompt = String(o.imagePrompt ?? o.image_prompt ?? '').trim() || null
   if (!body || !scheduledForRaw) return null
 
   const dt = new Date(scheduledForRaw)
@@ -350,10 +405,11 @@ function parseDraftResponse(text: string): ParsedDraftResponse | null {
       body,
       scheduledFor: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       schedulingReasoning: schedulingReasoning + ' (auto-bumped: AI picked too soon)',
+      imagePrompt,
     }
   }
 
-  return { body, scheduledFor: dt.toISOString(), schedulingReasoning }
+  return { body, scheduledFor: dt.toISOString(), schedulingReasoning, imagePrompt }
 }
 
 function stripJsonFence(s: string): string {

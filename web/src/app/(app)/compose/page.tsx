@@ -3,6 +3,9 @@ import { requireUser } from '@/lib/auth'
 import { getComposeView } from '@/lib/compose'
 import { ComposeView } from './compose-view'
 
+// "Regenerate draft" (invoked from this route) makes an AI call that can exceed the default window.
+export const maxDuration = 60
+
 export default async function ComposePage({
   searchParams,
 }: {

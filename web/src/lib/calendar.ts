@@ -13,6 +13,7 @@ export interface CalendarSlotView {
   posted_at: string | null
   draft_id: string | null
   draft_body: string | null
+  draft_image_prompt: string | null
   idea_id: string | null
   idea_hook: string | null
   idea_pillar: string | null
@@ -31,7 +32,7 @@ export async function listSlots(userId: string, opts?: { status?: SlotStatus; fu
       ai_reasoning,
       posted_at,
       draft_id,
-      drafts:draft_id ( id, body, idea_id, ideas:idea_id ( id, hook, pillar ) )
+      drafts:draft_id ( id, body, image_prompt, idea_id, ideas:idea_id ( id, hook, pillar ) )
     `)
     .eq('user_id', userId)
     .order('scheduled_for', { ascending: true })
@@ -52,9 +53,9 @@ export async function listSlots(userId: string, opts?: { status?: SlotStatus; fu
     draft_id: string | null
     // Supabase relational select returns either an object or an array depending on schema cardinality.
     drafts:
-      | { id: string; body: string | null; idea_id: string | null; ideas: { id: string; hook: string | null; pillar: string | null } | { id: string; hook: string | null; pillar: string | null }[] | null }
+      | { id: string; body: string | null; image_prompt: string | null; idea_id: string | null; ideas: { id: string; hook: string | null; pillar: string | null } | { id: string; hook: string | null; pillar: string | null }[] | null }
       | null
-      | Array<{ id: string; body: string | null; idea_id: string | null; ideas: { id: string; hook: string | null; pillar: string | null } | { id: string; hook: string | null; pillar: string | null }[] | null }>
+      | Array<{ id: string; body: string | null; image_prompt: string | null; idea_id: string | null; ideas: { id: string; hook: string | null; pillar: string | null } | { id: string; hook: string | null; pillar: string | null }[] | null }>
   }
 
   return (data as Row[] | null ?? []).map((r) => {
@@ -70,6 +71,7 @@ export async function listSlots(userId: string, opts?: { status?: SlotStatus; fu
       posted_at: r.posted_at,
       draft_id: draft?.id ?? null,
       draft_body: draft?.body ?? null,
+      draft_image_prompt: draft?.image_prompt ?? null,
       idea_id: draft?.idea_id ?? idea?.id ?? null,
       idea_hook: idea?.hook ?? null,
       idea_pillar: idea?.pillar ?? null,
