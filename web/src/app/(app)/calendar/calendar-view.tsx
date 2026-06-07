@@ -195,6 +195,22 @@ function SlotDetail({ slot, onClose }: { slot: CalendarSlotView; onClose: () => 
     })
   }
 
+  function doReschedule(cascade: boolean) {
+    const iso = fromLocalInput(when)
+    if (!iso) return setMsg({ kind: 'err', text: 'Invalid date/time.' })
+    setRescheduling(false)
+    setMsg(null)
+    startBusy(async () => {
+      const r = await rescheduleSlotAction(slot.slot_id, iso, cascade)
+      if (r.error) return setMsg({ kind: 'err', text: r.error })
+      setMsg({
+        kind: 'ok',
+        text: cascade ? `Rescheduled — shifted ${r.shifted ?? 0} upcoming post${r.shifted === 1 ? '' : 's'}.` : 'Rescheduled.',
+      })
+      router.refresh()
+    })
+  }
+
   return (
     <div className="box pad-lg">
       <div className="row between center" style={{ marginBottom: 10 }}>
@@ -226,21 +242,20 @@ function SlotDetail({ slot, onClose }: { slot: CalendarSlotView; onClose: () => 
       {msg && <div className={`banner ${msg.kind === 'ok' ? 'ok' : 'err'} mt12`}>{msg.text}</div>}
 
       {rescheduling && !readonly && (
-        <div className="row gap8 mt12">
+        <div className="stack gap8 mt12">
           <input type="datetime-local" className="field" value={when} onChange={(e) => setWhen(e.target.value)} />
-          <button
-            className="btn primary sm"
-            disabled={busy}
-            onClick={() => {
-              const iso = fromLocalInput(when)
-              if (!iso) return setMsg({ kind: 'err', text: 'Invalid date.' })
-              run(() => rescheduleSlotAction(slot.slot_id, iso), 'Rescheduled.')
-              setRescheduling(false)
-            }}
-          >
-            Save
-          </button>
-          <button className="btn ghost sm" onClick={() => setRescheduling(false)}>Cancel</button>
+          <div className="row gap6 wrap">
+            <button className="btn primary sm" disabled={busy} onClick={() => doReschedule(false)}>
+              Reschedule this post
+            </button>
+            <button className="btn human sm" disabled={busy} onClick={() => doReschedule(true)}>
+              …and shift all upcoming
+            </button>
+            <button className="btn ghost sm" onClick={() => setRescheduling(false)}>Cancel</button>
+          </div>
+          <span className="eyebrow" style={{ textTransform: 'none', letterSpacing: 0 }}>
+            “Shift all” moves every upcoming post by the same amount, keeping their spacing.
+          </span>
         </div>
       )}
 

@@ -28,12 +28,18 @@ export async function skipSlotAction(slotId: string): Promise<{ error?: string; 
   }
 }
 
-export async function rescheduleSlotAction(slotId: string, scheduledForIso: string): Promise<{ error?: string; ok?: true }> {
+export async function rescheduleSlotAction(
+  slotId: string,
+  scheduledForIso: string,
+  cascade = false,
+): Promise<{ error?: string; ok?: true; shifted?: number }> {
   const user = await requireUser()
   try {
-    await rescheduleSlot(user.id, slotId, scheduledForIso)
+    const { shifted } = await rescheduleSlot(user.id, slotId, scheduledForIso, { cascade })
     revalidatePath('/calendar')
-    return { ok: true }
+    revalidatePath('/compose')
+    revalidatePath('/dashboard')
+    return { ok: true, shifted }
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'failed' }
   }

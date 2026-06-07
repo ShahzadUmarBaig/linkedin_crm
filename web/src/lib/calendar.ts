@@ -134,21 +134,55 @@ export async function skipSlot(userId: string, slotId: string): Promise<void> {
   if (error) throw new Error(`skipSlot: ${error.message}`)
 }
 
-export async function rescheduleSlot(userId: string, slotId: string, newIso: string): Promise<void> {
+export async function rescheduleSlot(
+  userId: string,
+  slotId: string,
+  newIso: string,
+  opts?: { cascade?: boolean },
+): Promise<{ shifted: number }> {
   const supabase = await createSupabaseServerClient()
   const dt = new Date(newIso)
   if (isNaN(dt.getTime())) throw new Error('Invalid date.')
 
-  const { error } = await supabase
+  if (!opts?.cascade) {
+    const { error } = await supabase
+      .from('calendar_slots')
+      .update({ scheduled_for: dt.toISOString(), ai_chosen: false, ai_reasoning: 'Rescheduled manually.' })
+      .eq('id', slotId)
+      .eq('user_id', userId)
+    if (error) throw new Error(`rescheduleSlot: ${error.message}`)
+    return { shifted: 1 }
+  }
+
+  // Cascade: shift every still-scheduled (not posted/skipped) slot by the same delta, so the whole
+  // queue moves while keeping its spacing.
+  const { data: cur, error: curErr } = await supabase
     .from('calendar_slots')
-    .update({
-      scheduled_for: dt.toISOString(),
-      ai_chosen: false,
-      ai_reasoning: 'Rescheduled manually.',
-    })
+    .select('scheduled_for')
     .eq('id', slotId)
     .eq('user_id', userId)
-  if (error) throw new Error(`rescheduleSlot: ${error.message}`)
+    .single()
+  if (curErr || !cur) throw new Error(`rescheduleSlot: slot not found`)
+  const delta = dt.getTime() - new Date(cur.scheduled_for).getTime()
+
+  const { data: slots, error: listErr } = await supabase
+    .from('calendar_slots')
+    .select('id, scheduled_for')
+    .eq('user_id', userId)
+    .eq('status', 'scheduled')
+  if (listErr) throw new Error(`rescheduleSlot: ${listErr.message}`)
+
+  let shifted = 0
+  for (const s of (slots ?? []) as { id: string; scheduled_for: string }[]) {
+    const nt = new Date(new Date(s.scheduled_for).getTime() + delta).toISOString()
+    const { error } = await supabase
+      .from('calendar_slots')
+      .update({ scheduled_for: nt, ai_chosen: false, ai_reasoning: 'Shifted with the schedule.' })
+      .eq('id', s.id)
+      .eq('user_id', userId)
+    if (!error) shifted += 1
+  }
+  return { shifted }
 }
 
 export async function updateDraftBody(userId: string, draftId: string, body: string): Promise<void> {
