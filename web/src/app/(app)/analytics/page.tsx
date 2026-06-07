@@ -1,10 +1,12 @@
 import { requireUser } from '@/lib/auth'
 import { getAnalytics } from '@/lib/analytics'
+import { getPostingInsights } from '@/lib/insights'
 import { compactNumber, formatDate, truncate } from '@/lib/format'
+import { BestWindows } from './best-windows'
 
 export default async function AnalyticsPage() {
   const user = await requireUser()
-  const a = await getAnalytics(user.id)
+  const [a, insights] = await Promise.all([getAnalytics(user.id), getPostingInsights(user.id)])
 
   if (!a.hasData) {
     return (
@@ -31,6 +33,8 @@ export default async function AnalyticsPage() {
         <span className="eyebrow">Synced from the extension</span>
         <div className="h-page mt8">What performed — and what it teaches the engine</div>
       </div>
+
+      <BestWindows insights={insights} />
 
       <div className="g3 mb16">
         <div className="stat">

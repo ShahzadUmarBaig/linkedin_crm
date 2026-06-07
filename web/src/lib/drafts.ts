@@ -5,6 +5,7 @@
 import { createSupabaseServiceClient } from './supabase/server'
 import { generate } from './ai/client'
 import { generatePostImages } from './images'
+import { pickOptimalSlot } from './insights'
 import type { IdeaRow } from './ideas'
 
 export interface ApproveIdeaResult {
@@ -87,15 +88,18 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
     .single()
   if (draftErr || !draft) throw new Error(`drafts insert: ${draftErr?.message}`)
 
-  // 6. Insert calendar slot
+  // 6. Choose the slot from the user's own performance data (best day + time), not the AI's
+  // guess. Falls back to a weekday-morning default until there's enough history.
+  const optimal = await pickOptimalSlot(userId, { avoidIsos: upcomingSlots })
+
   const { data: slot, error: slotErr } = await supabase
     .from('calendar_slots')
     .insert({
       user_id: userId,
       draft_id: draft.id,
-      scheduled_for: parsed.scheduledFor,
+      scheduled_for: optimal.iso,
       ai_chosen: true,
-      ai_reasoning: parsed.schedulingReasoning,
+      ai_reasoning: optimal.reasoning,
       status: 'scheduled',
     })
     .select('id')
@@ -122,8 +126,8 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
   return {
     draftId: draft.id,
     slotId: slot.id,
-    scheduledFor: parsed.scheduledFor,
-    schedulingReasoning: parsed.schedulingReasoning,
+    scheduledFor: optimal.iso,
+    schedulingReasoning: optimal.reasoning,
     costUsd: response.costUsd,
     model: response.model,
   }
