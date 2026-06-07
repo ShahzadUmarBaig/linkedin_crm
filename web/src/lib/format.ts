@@ -43,27 +43,25 @@ export function compactNumber(n: number): string {
   return String(n)
 }
 
-// Heuristic "predicted reach" preview until the real scoring engine ships with Autopilot.
-export function reachLabel(sourceType: string | null): { label: string; tone: 'good' | 'auto' } {
-  switch (sourceType) {
-    case 'inspiration_post':
-      return { label: 'High', tone: 'good' }
-    case 'own_post_pattern':
-      return { label: 'Medium', tone: 'auto' }
-    default:
-      return { label: 'Medium', tone: 'auto' }
-  }
-}
-
 export function sourceLabel(src: string | null): string {
   switch (src) {
-    case 'inspiration_post':
-      return 'trend-led'
     case 'own_post_pattern':
-      return 'your pattern'
+      return 'your posts'
+    case 'inspiration_post':
+      return 'your feed'
+    case 'rss_item':
+      return 'newsletter'
     case 'niche_research':
-      return 'niche research'
+      return 'research'
     default:
       return src ?? 'idea'
   }
+}
+
+// 1-100 score → a qualitative tone for the badge.
+export function scoreTone(score: number | null): 'good' | 'auto' | '' {
+  if (score == null) return ''
+  if (score >= 75) return 'good'
+  if (score >= 55) return 'auto'
+  return ''
 }

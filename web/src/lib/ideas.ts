@@ -9,6 +9,8 @@ import { getRecentRssForIdeas } from './rss'
 
 export const IDEA_QUEUE_TARGET = 5
 
+type Supa = ReturnType<typeof createSupabaseServiceClient>
+
 export type IdeaStatus = 'proposed' | 'selected' | 'rejected' | 'scheduled' | 'posted'
 
 export interface IdeaRow {
@@ -17,6 +19,8 @@ export interface IdeaRow {
   hook: string | null
   angle: string | null
   pillar: string | null
+  score: number | null
+  topics: string[] | null
   source_type: string | null
   source_inspiration_post_id: string | null
   source_scraped_post_id: string | null
@@ -56,28 +60,38 @@ export async function rejectIdea(userId: string, ideaId: string): Promise<void> 
 const SYSTEM_PROMPT = `You generate LinkedIn post IDEAS — not full posts. Each idea is a seed
 the user will later expand into a draft.
 
-Return ONLY a JSON array of 3-5 ideas (no prose, no markdown fences). Each idea object:
+You are given THREE input sources: the user's OWN past posts, posts from their FEED (others),
+and recent NEWSLETTER/blog items. Draw ideas from a BALANCED MIX of all three.
+
+Return ONLY a JSON array of ideas (no prose, no markdown fences). Each idea object:
 {
   "hook":   "the very first line of a hypothetical LinkedIn post — punchy, specific, curiosity- or emotion-driven. <= 120 chars.",
   "angle":  "one sentence on what the post would actually say — the unique take, not the topic.",
   "pillar": "exactly one of the user's pillars (must match by name)",
-  "source_type":          "inspiration_post" | "own_post_pattern" | "niche_research",
-  "source_inspiration_urn": "the urn of the inspiration post that sparked this, if any (else null)",
-  "source_scraped_urn":     "the urn of the user's own past post being riffed on, if any (else null)"
+  "topics": ["1-3 short Title-Case topic tags, e.g. \\"AI Agents\\", \\"Startups\\" — reuse common tags"],
+  "source_type": "own_post_pattern" | "inspiration_post" | "rss_item" | "niche_research",
+  "base_score": 0-100 integer — your honest read on this hook's stop-scroll power + comment potential for THIS user's audience. Be discriminating: reserve 80+ for genuinely strong, specific, contrarian or story-driven hooks; give generic/safe ones 40-60.,
+  "source_inspiration_urn": "the urn of the feed post that sparked this, if source_type is inspiration_post (else null)",
+  "source_scraped_urn":     "the urn of the user's own past post being riffed on, if source_type is own_post_pattern (else null)"
 }
 
 Rules:
+- BALANCE across sources: across the set, include ideas grounded in own_post_pattern, inspiration_post, AND rss_item — do not take them all from one source. Use niche_research only to fill gaps.
 - Hooks must be distinct from each other AND from the existing-hooks list provided.
 - Use the user's tone exactly. If they sound casual, your hooks sound casual; if professional, professional.
 - A hook is NOT a question unless the question is provocative or contrarian.
-- If you cite an inspiration post, the angle must be a contrarian, additive, or deeper take — never a copy.
+- If you cite a source, the angle must be a contrarian, additive, or deeper take — never a copy.
 - Output a single JSON array. No commentary.`
+
+type ParsedSourceType = 'inspiration_post' | 'own_post_pattern' | 'rss_item' | 'niche_research'
 
 interface ParsedIdea {
   hook: string
   angle: string
   pillar: string
-  sourceType: 'inspiration_post' | 'own_post_pattern' | 'niche_research'
+  topics: string[]
+  baseScore: number
+  sourceType: ParsedSourceType
   sourceInspirationUrn: string | null
   sourceScrapedUrn: string | null
 }
@@ -188,6 +202,10 @@ export async function generateIdeas(
     scrs?.forEach((r: { id: string; linkedin_urn: string }) => scrapedIdByUrn.set(r.linkedin_urn, r.id))
   }
 
+  // 6b. Score each idea: model's base read, lifted by trend match + the user's historical
+  // performance on the idea's topics.
+  const [trendMap, perfMap] = await Promise.all([loadTrendWeights(supabase, userId), loadTopicPerformance(supabase, userId)])
+
   // 7. Insert into ideas
   const rows = parsed.map((p) => ({
     user_id: userId,
@@ -195,6 +213,8 @@ export async function generateIdeas(
     hook: p.hook,
     angle: p.angle,
     pillar: p.pillar,
+    topics: p.topics,
+    score: scoreIdea(p, trendMap, perfMap),
     source_type: p.sourceType,
     source_inspiration_post_id: p.sourceInspirationUrn ? inspirationIdByUrn.get(p.sourceInspirationUrn) ?? null : null,
     source_scraped_post_id: p.sourceScrapedUrn ? scrapedIdByUrn.get(p.sourceScrapedUrn) ?? null : null,
@@ -205,6 +225,92 @@ export async function generateIdeas(
   if (insertErr) throw new Error(`ideas insert failed: ${insertErr.message}`)
 
   return { generated: rows.length, skipped: false, costUsd: response.costUsd, model: response.model }
+}
+
+// ----- Scoring -----
+// final = 0.7 * model base + up to +20 for matching a strong current trend + up to +15 for the
+// user historically over-performing on the idea's topics. Clamped to 1..100.
+
+function scoreIdea(idea: ParsedIdea, trendMap: Map<string, number>, perfMap: Map<string, number>): number {
+  const topics = idea.topics.map((t) => t.toLowerCase())
+  let trendWeight = 0
+  let perfRatio = 1
+  for (const t of topics) {
+    if (trendMap.has(t)) trendWeight = Math.max(trendWeight, trendMap.get(t)!)
+    if (perfMap.has(t)) perfRatio = Math.max(perfRatio, perfMap.get(t)!)
+  }
+  const trendBonus = Math.round(20 * trendWeight)
+  const perfBonus = Math.round(15 * Math.max(0, Math.min(1, perfRatio - 1)))
+  const score = Math.round(0.7 * idea.baseScore + trendBonus + perfBonus)
+  return Math.max(1, Math.min(100, score))
+}
+
+// topic(lowercased) -> weight 0..1 relative to the top trend, across feed + RSS topics.
+async function loadTrendWeights(supabase: Supa, userId: string): Promise<Map<string, number>> {
+  const [insp, rss] = await Promise.all([
+    supabase.from('inspiration_posts').select('topics').eq('user_id', userId).not('topics', 'is', null).limit(500),
+    supabase.from('rss_items').select('topics').eq('user_id', userId).not('topics', 'is', null).limit(500),
+  ])
+  const counts = new Map<string, number>()
+  for (const row of [...((insp.data ?? []) as { topics: string[] | null }[]), ...((rss.data ?? []) as { topics: string[] | null }[])]) {
+    for (const raw of row.topics ?? []) {
+      const t = raw.trim().toLowerCase()
+      if (t) counts.set(t, (counts.get(t) ?? 0) + 1)
+    }
+  }
+  const max = Math.max(1, ...counts.values())
+  const weights = new Map<string, number>()
+  for (const [t, c] of counts) weights.set(t, c / max)
+  return weights
+}
+
+// topic(lowercased) -> ratio of the user's avg engagement on that topic vs their overall avg.
+async function loadTopicPerformance(supabase: Supa, userId: string): Promise<Map<string, number>> {
+  const { data: posts } = await supabase
+    .from('scraped_posts')
+    .select('id, topics')
+    .eq('user_id', userId)
+    .not('topics', 'is', null)
+    .limit(200)
+  const rows = (posts ?? []) as { id: string; topics: string[] | null }[]
+  if (rows.length === 0) return new Map()
+
+  const { data: snaps } = await supabase
+    .from('post_metric_snapshots')
+    .select('post_id, likes, comments, reposts, captured_at')
+    .in('post_id', rows.map((p) => p.id))
+    .order('captured_at', { ascending: false })
+
+  const engByPost = new Map<string, number>()
+  for (const s of (snaps ?? []) as { post_id: string; likes: number | null; comments: number | null; reposts: number | null }[]) {
+    if (engByPost.has(s.post_id)) continue
+    engByPost.set(s.post_id, (s.likes ?? 0) + (s.comments ?? 0) + (s.reposts ?? 0))
+  }
+  if (engByPost.size === 0) return new Map()
+
+  let total = 0
+  let n = 0
+  const byTopic = new Map<string, { sum: number; n: number }>()
+  for (const p of rows) {
+    const eng = engByPost.get(p.id)
+    if (eng === undefined) continue
+    total += eng
+    n += 1
+    for (const raw of p.topics ?? []) {
+      const t = raw.trim().toLowerCase()
+      if (!t) continue
+      const cur = byTopic.get(t) ?? { sum: 0, n: 0 }
+      cur.sum += eng
+      cur.n += 1
+      byTopic.set(t, cur)
+    }
+  }
+  const overall = n > 0 ? total / n : 0
+  const ratios = new Map<string, number>()
+  if (overall > 0) {
+    for (const [t, { sum, n: tn }] of byTopic) ratios.set(t, sum / tn / overall)
+  }
+  return ratios
 }
 
 // ----- Prompt builders + parser -----
@@ -313,15 +419,27 @@ function parseIdeas(text: string, validPillars: string[]): ParsedIdea[] {
       pillar = match ?? validPillars[0] ?? ''
     }
 
-    const sourceType: ParsedIdea['sourceType'] =
-      sourceTypeRaw === 'inspiration_post' || sourceTypeRaw === 'own_post_pattern' || sourceTypeRaw === 'niche_research'
+    const sourceType: ParsedSourceType =
+      sourceTypeRaw === 'inspiration_post' ||
+      sourceTypeRaw === 'own_post_pattern' ||
+      sourceTypeRaw === 'rss_item' ||
+      sourceTypeRaw === 'niche_research'
         ? sourceTypeRaw
         : 'niche_research'
+
+    const topics = Array.isArray(o.topics)
+      ? o.topics.map((t) => String(t).trim()).filter((t) => t.length > 0 && t.length < 40).slice(0, 3)
+      : []
+
+    const rawScore = Number(o.base_score ?? o.score)
+    const baseScore = Number.isFinite(rawScore) ? Math.max(0, Math.min(100, Math.round(rawScore))) : 55
 
     out.push({
       hook,
       angle,
       pillar,
+      topics,
+      baseScore,
       sourceType,
       sourceInspirationUrn: nullableUrn(o.source_inspiration_urn),
       sourceScrapedUrn: nullableUrn(o.source_scraped_urn),
