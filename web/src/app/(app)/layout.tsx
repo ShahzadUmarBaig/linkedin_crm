@@ -1,5 +1,6 @@
 import { requireUser } from '@/lib/auth'
 import { createSupabaseServerClient } from '@/lib/supabase/server'
+import { loadSettings } from '@/lib/settings'
 import { AppShell, type ShellNavCounts } from './app-shell'
 
 async function loadNavCounts(userId: string): Promise<ShellNavCounts> {
@@ -22,9 +23,14 @@ async function loadNavCounts(userId: string): Promise<ShellNavCounts> {
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser()
-  const counts = await loadNavCounts(user.id)
+  const [counts, settings] = await Promise.all([loadNavCounts(user.id), loadSettings(user.id)])
   return (
-    <AppShell email={user.email ?? 'you'} counts={counts}>
+    <AppShell
+      email={user.email ?? 'you'}
+      counts={counts}
+      autopilotEnabled={settings.autopilotEnabled}
+      lastAutopilotRunAt={settings.lastAutopilotRunAt}
+    >
       {children}
     </AppShell>
   )

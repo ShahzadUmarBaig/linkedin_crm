@@ -1,9 +1,11 @@
 'use client'
 
 import Link from 'next/link'
-import { usePathname } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { usePathname, useRouter } from 'next/navigation'
+import { useState, useTransition } from 'react'
 import { logout } from '@/app/actions/auth'
+import { runAutopilotNowAction, setAutopilotAction } from '@/app/actions/autopilot'
+import { relativeTime } from '@/lib/format'
 
 export interface ShellNavCounts {
   ideas: number
@@ -30,10 +32,14 @@ export function AppShell({
   children,
   email,
   counts,
+  autopilotEnabled,
+  lastAutopilotRunAt,
 }: {
   children: React.ReactNode
   email: string
   counts: ShellNavCounts
+  autopilotEnabled: boolean
+  lastAutopilotRunAt: string | null
 }) {
   const pathname = usePathname()
   const [title, sub] = titleFor(pathname)
@@ -65,7 +71,7 @@ export function AppShell({
         <NavItem href="/profile" label="Profile" active={isActive('/profile')} circle />
         <NavItem href="/settings" label="Settings" active={isActive('/settings')} />
 
-        <Autopilot />
+        <Autopilot enabled={autopilotEnabled} lastRunAt={lastAutopilotRunAt} />
       </aside>
 
       <main className="main">
@@ -117,32 +123,56 @@ function NavItem({
   )
 }
 
-function Autopilot() {
-  // Cosmetic stub — there is no nightly autopilot backend yet. Persist the toggle
-  // locally so the UI remembers the user's preference until the engine ships.
-  const [on, setOn] = useState(true)
-  useEffect(() => {
-    const stored = window.localStorage.getItem('autopilot')
-    if (stored != null) setOn(stored === '1')
-  }, [])
+function Autopilot({ enabled, lastRunAt }: { enabled: boolean; lastRunAt: string | null }) {
+  const router = useRouter()
+  const [on, setOn] = useState(enabled)
+  const [saving, startSave] = useTransition()
+  const [running, startRun] = useTransition()
+  const [msg, setMsg] = useState<string | null>(null)
+
   function toggle() {
-    setOn((v) => {
-      window.localStorage.setItem('autopilot', v ? '0' : '1')
-      return !v
+    const next = !on
+    setOn(next) // optimistic
+    startSave(async () => {
+      const r = await setAutopilotAction(next)
+      if (r.error) {
+        setOn(!next) // revert
+        setMsg(r.error)
+      } else {
+        router.refresh()
+      }
     })
   }
+
+  function runNow() {
+    setMsg(null)
+    startRun(async () => {
+      const r = await runAutopilotNowAction()
+      if ('error' in r) return setMsg(r.error)
+      setMsg(
+        r.ideasGenerated > 0
+          ? `Generated ${r.ideasGenerated} idea${r.ideasGenerated === 1 ? '' : 's'}.`
+          : r.ideasSkippedReason ?? 'Queue already full.',
+      )
+      router.refresh()
+    })
+  }
+
   return (
     <div className="autopill">
       <div className="row">
         <div className="stack" style={{ gap: 1 }}>
           <span style={{ fontSize: 12, fontWeight: 700 }}>Autopilot</span>
-          <span className="eyebrow" style={{ fontSize: 9 }}>{on ? 'running nightly' : 'paused'}</span>
+          <span className="eyebrow" style={{ fontSize: 9 }}>
+            {on ? (lastRunAt ? `ran ${relativeTime(lastRunAt)}` : 'running nightly') : 'paused'}
+          </span>
         </div>
         <button
           type="button"
           aria-label="Toggle autopilot"
           className={`switch${on ? '' : ' off'}`}
           onClick={toggle}
+          disabled={saving}
         >
           <i />
         </button>
@@ -150,6 +180,16 @@ function Autopilot() {
       <div className="note solid" style={{ marginTop: 10 }}>
         AI does <b>6 of 8</b> steps. You only <b>approve</b> &amp; <b>post</b>.
       </div>
+      <button
+        type="button"
+        className="btn ghost sm"
+        style={{ width: '100%', marginTop: 8 }}
+        onClick={runNow}
+        disabled={running}
+      >
+        {running ? 'Running…' : 'Run now'}
+      </button>
+      {msg && <div className="eyebrow" style={{ marginTop: 6, textTransform: 'none', letterSpacing: 0, color: 'var(--muted)' }}>{msg}</div>}
     </div>
   )
 }

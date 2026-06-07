@@ -17,6 +17,8 @@ export interface SettingsView {
   taskModelOverrides: Record<string, string>
   monthlyBudgetWarnUsd: number | null
   monthlyBudgetHardUsd: number | null
+  autopilotEnabled: boolean
+  lastAutopilotRunAt: string | null
 }
 
 export interface SettingsUpdate {
@@ -27,6 +29,7 @@ export interface SettingsUpdate {
   taskModelOverrides?: Record<string, string>
   monthlyBudgetWarnUsd?: number | null
   monthlyBudgetHardUsd?: number | null
+  autopilotEnabled?: boolean
 }
 
 export async function loadSettings(userId: string): Promise<SettingsView> {
@@ -52,6 +55,8 @@ export async function loadSettings(userId: string): Promise<SettingsView> {
     taskModelOverrides: (data?.task_model_overrides ?? {}) as Record<string, string>,
     monthlyBudgetWarnUsd: data?.monthly_budget_warn_usd ?? null,
     monthlyBudgetHardUsd: data?.monthly_budget_hard_usd ?? null,
+    autopilotEnabled: data?.autopilot_enabled ?? true,
+    lastAutopilotRunAt: data?.last_autopilot_run_at ?? null,
   }
 }
 
@@ -71,6 +76,7 @@ export async function saveSettings(userId: string, update: SettingsUpdate): Prom
   if (update.taskModelOverrides !== undefined) patch.task_model_overrides = update.taskModelOverrides
   if (update.monthlyBudgetWarnUsd !== undefined) patch.monthly_budget_warn_usd = update.monthlyBudgetWarnUsd
   if (update.monthlyBudgetHardUsd !== undefined) patch.monthly_budget_hard_usd = update.monthlyBudgetHardUsd
+  if (update.autopilotEnabled !== undefined) patch.autopilot_enabled = update.autopilotEnabled
 
   const { error } = await supabase.from('settings').upsert(patch, { onConflict: 'user_id' })
   if (error) throw new Error(`settings save failed: ${error.message}`)
