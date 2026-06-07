@@ -3,13 +3,13 @@
 import { useMemo, useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  markSlotPostedAction,
   rescheduleSlotAction,
   skipSlotAction,
   updateDraftBodyAction,
 } from '@/app/actions/calendar'
 import type { CalendarSlotView } from '@/lib/calendar'
 import { formatDateTime } from '@/lib/format'
+import { PublishFlow } from '../publish-flow'
 
 type View = 'month' | 'list'
 
@@ -140,9 +140,15 @@ export function CalendarView({ upcoming, posted, skipped }: Props) {
             {due.length > 0 && (
               <div className="box pad-lg">
                 <div className="h-sec" style={{ marginBottom: 10 }}>Ready to post</div>
-                <div className="stack gap8">
+                <div className="stack gap12">
                   {due.map((s) => (
-                    <ReadyRow key={s.slot_id} slot={s} onSelect={() => setSelectedId(s.slot_id)} />
+                    <div className="todo" key={s.slot_id} style={{ borderColor: 'var(--human-line)', borderRadius: 9, flexDirection: 'column', alignItems: 'stretch', gap: 10 }}>
+                      <div className="stack gap6">
+                        <b style={{ fontSize: 12.5 }}>{s.idea_hook ?? 'Scheduled post'}</b>
+                        <span className="tag human"><span className="dot" />{formatDateTime(s.scheduled_for)}</span>
+                      </div>
+                      <PublishFlow slotId={s.slot_id} caption={s.draft_body ?? ''} />
+                    </div>
                   ))}
                 </div>
               </div>
@@ -162,25 +168,6 @@ export function CalendarView({ upcoming, posted, skipped }: Props) {
         <ListView upcoming={upcoming} posted={posted} skipped={skipped} />
       )}
     </>
-  )
-}
-
-function ReadyRow({ slot, onSelect }: { slot: CalendarSlotView; onSelect: () => void }) {
-  const [ok, setOk] = useState<string | null>(null)
-  function copy() {
-    if (!slot.draft_body) return
-    void navigator.clipboard.writeText(slot.draft_body)
-    setOk('Copied — paste into LinkedIn')
-    setTimeout(() => setOk(null), 2000)
-  }
-  return (
-    <div className="todo" style={{ borderColor: 'var(--human-line)', borderRadius: 9 }}>
-      <div className="grow stack gap6" onClick={onSelect} style={{ cursor: 'pointer' }}>
-        <b style={{ fontSize: 12.5 }}>{slot.idea_hook ?? 'Scheduled post'}</b>
-        <span className="tag human"><span className="dot" />{formatDateTime(slot.scheduled_for)}</span>
-      </div>
-      <button className="btn human sm" onClick={copy}>{ok ? '✓' : 'Copy'}</button>
-    </div>
   )
 }
 
@@ -249,10 +236,13 @@ function SlotDetail({ slot, onClose }: { slot: CalendarSlotView; onClose: () => 
       )}
 
       {!readonly && !rescheduling && (
-        <div className="row gap6 wrap mt16">
-          <button className="btn human sm" disabled={busy} onClick={() => run(() => markSlotPostedAction(slot.slot_id), 'Marked as posted.')}>
-            Mark posted
-          </button>
+        <div className="mt16">
+          <PublishFlow slotId={slot.slot_id} caption={editing ? body : slot.draft_body ?? ''} />
+        </div>
+      )}
+
+      {!readonly && !rescheduling && (
+        <div className="row gap6 wrap mt12">
           {editing ? (
             <button className="btn primary sm" disabled={busy || !slot.draft_id} onClick={() => { run(() => updateDraftBodyAction(slot.draft_id!, body), 'Saved.'); setEditing(false) }}>
               Save body

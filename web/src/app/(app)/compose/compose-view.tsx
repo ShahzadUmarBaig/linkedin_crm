@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { updateDraftBodyAction } from '@/app/actions/calendar'
 import type { CalendarSlotView } from '@/lib/calendar'
 import { formatDateTime } from '@/lib/format'
+import { PublishFlow } from '../publish-flow'
 
 const MAX = 3000
 
@@ -165,13 +166,15 @@ export function ComposeView({ view }: { view: CalendarSlotView }) {
                 </>
               )}
             </div>
-            <Link className="btn human" style={{ padding: 12, fontSize: 14 }} href="/calendar">
-              ✓ Looks good — view calendar
-            </Link>
+            {dirty && (
+              <div className="note">Save your edits before publishing so the copied caption matches.</div>
+            )}
+            <PublishFlow slotId={view.slot_id} caption={body} />
             <div className="row gap8">
               {dirty && (
                 <button className="btn ghost grow" onClick={save} disabled={saving}>Save edits</button>
               )}
+              <Link className="btn ghost grow" href="/calendar" style={{ textAlign: 'center' }}>View calendar</Link>
               <button className="btn ghost grow" onClick={() => router.push('/ideas')}>Back to ideas</button>
             </div>
           </div>
