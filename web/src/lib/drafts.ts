@@ -310,9 +310,11 @@ Rules:
 - The body should sound like the user wrote it from scratch, not like an AI summary.
 - Avoid generic LinkedIn cliches ("excited to share", "I'm thrilled", "let me know your thoughts").
 
-imagePrompt rules (written FOR the FLUX.1 model — accuracy over length):
-- ONE single paragraph, ~120-200 words. FLUX follows focused prompts far more accurately than bloated ones, so be vivid but tight — do NOT pad to 400 words.
-- FRONT-LOAD the concrete main subject in the first sentence (one clear focal subject — FLUX is most accurate with a single subject, not a busy scene).
+imagePrompt rules (written FOR the FLUX.2 [pro] model — depict the ARGUMENT, not the topic):
+- STEP 1 (do this first, in your head): identify the post's SINGLE central argument or claim — the specific point it makes, not its broad topic. ("Stop gating knowledge behind engagement" — not "knowledge".)
+- STEP 2: invent ONE concrete, real-object scene that visually DEPICTS that argument like a visual metaphor a photographer could actually stage, with a small storytelling DETAIL that carries the point. WORKED EXAMPLE — for a post arguing "stop gating knowledge behind engagement", the right image is a chrome stanchion post with its red velvet rope UNCLIPPED and dropped open on the floor, in front of an open doorway glowing with warm light — the dropped rope IS the message. A glowing book on a pedestal would be WRONG: that is a generic mood-image of the topic, not the argument. Always choose the staged real-object metaphor over the pretty mood-image.
+- Then write the prompt as ONE single paragraph, ~120-200 words. FLUX follows focused prompts far more accurately than bloated ones — be vivid but tight, do NOT pad to 400 words.
+- FRONT-LOAD that concrete metaphor scene in the first sentence (one clear focal subject/scene — FLUX is most accurate with a single subject, not a busy scene).
 - Then describe, in order: the art style (e.g. "clean minimal 3D render", "editorial flat vector illustration", "soft cinematic photograph"), composition & framing (focal point, generous negative space), color palette (2-3 specific colors on a calm, professional LinkedIn aesthetic), lighting (direction + softness), and overall mood.
 - Use POSITIVE phrasing only — describe what SHOULD appear. FLUX ignores negative/"avoid" lists, so never write "no X". To keep it clean, instead say things like "a wordless, uncluttered composition" rather than "no text".
 - Explicitly request "landscape orientation, no text or lettering, no logos, no watermarks" as a short positive clause (FLUX honors a brief in-prompt instruction better than a long avoid-list).
