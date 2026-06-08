@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { approveIdeaAction, rejectIdeaAction, triggerGenerateIdeas, updateIdeaAction } from '@/app/actions/ideas'
+import { approveIdeaAction, discardAllIdeasAction, rejectIdeaAction, triggerGenerateIdeas, updateIdeaAction } from '@/app/actions/ideas'
 import type { IdeaRow } from '@/lib/ideas'
 import type { TrendItem } from '@/lib/dashboard'
 import { scoreTone, sourceLabel } from '@/lib/format'
@@ -35,6 +35,17 @@ export function IdeasView({
         text: `Generated ${r.generated} idea${r.generated === 1 ? '' : 's'}` +
           (r.costUsd != null ? ` ($${r.costUsd.toFixed(4)})` : '') + '. Refreshing…',
       })
+      router.refresh()
+    })
+  }
+
+  function discardAll() {
+    if (!confirm(`Discard all ${proposed.length} ideas? They move to rejected and the queue clears.`)) return
+    setMsg(null)
+    startGenerate(async () => {
+      const r = await discardAllIdeasAction()
+      if (r.error) return setMsg({ kind: 'err', text: r.error })
+      setMsg({ kind: 'ok', text: `Discarded ${r.discarded ?? 0}. Click Generate for a fresh batch.` })
       router.refresh()
     })
   }
@@ -80,9 +91,14 @@ export function IdeasView({
               Approve one — AI drafts the text + visual next. The rest stay saved.
             </span>
           </div>
-          <button className="btn ghost" onClick={() => runGenerate(false)} disabled={generating}>
-            <span className="ico" />{generating ? 'Generating…' : 'Generate'}
-          </button>
+          <div className="row gap8">
+            {proposed.length > 0 && (
+              <button className="btn danger" onClick={discardAll} disabled={generating}>Discard all</button>
+            )}
+            <button className="btn ghost" onClick={() => runGenerate(false)} disabled={generating}>
+              <span className="ico" />{generating ? 'Generating…' : 'Generate'}
+            </button>
+          </div>
         </div>
 
         {trends.length > 0 && (

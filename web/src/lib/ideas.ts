@@ -55,6 +55,19 @@ export async function rejectIdea(userId: string, ideaId: string): Promise<void> 
   if (error) throw new Error(`rejectIdea failed: ${error.message}`)
 }
 
+// Reject every currently-proposed idea (the user doesn't like the batch). Returns the count.
+export async function rejectAllProposed(userId: string): Promise<number> {
+  const supabase = await createSupabaseServerClient()
+  const { data, error } = await supabase
+    .from('ideas')
+    .update({ status: 'rejected', rejected_at: new Date().toISOString() })
+    .eq('user_id', userId)
+    .eq('status', 'proposed')
+    .select('id')
+  if (error) throw new Error(`rejectAllProposed failed: ${error.message}`)
+  return data?.length ?? 0
+}
+
 // ----- Generation -----
 
 const SYSTEM_PROMPT = `You generate LinkedIn post IDEAS — not full posts. Each idea is a seed
@@ -70,7 +83,7 @@ Return ONLY a JSON array of ideas (no prose, no markdown fences). Each idea obje
   "pillar": "exactly one of the user's pillars (must match by name)",
   "topics": ["1-3 short Title-Case topic tags, e.g. \\"AI Agents\\", \\"Startups\\" — reuse common tags"],
   "source_type": "own_post_pattern" | "inspiration_post" | "rss_item" | "niche_research",
-  "base_score": 0-100 integer — your honest read on this hook's stop-scroll power + comment potential for THIS user's audience. Be discriminating: reserve 80+ for genuinely strong, specific, contrarian or story-driven hooks; give generic/safe ones 40-60.,
+  "base_score": 0-100 integer — your honest read on this hook's stop-scroll power + comment potential for THIS user's audience. USE THE FULL RANGE and SPREAD the scores across the set — do NOT cluster everything in the 50s-60s. In a set of 5, expect a real spread (e.g. one 88+, two around 70-78, one near 60, one below 50). A genuinely scroll-stopping, specific, contrarian or story-driven hook earns 85-97; a solid-but-expected hook 65-78; a safe/generic/vague hook 35-52. Be decisive, not diplomatic.,
   "source_inspiration_urn": "the urn of the feed post that sparked this, if source_type is inspiration_post (else null)",
   "source_scraped_urn":     "the urn of the user's own past post being riffed on, if source_type is own_post_pattern (else null)"
 }
@@ -232,17 +245,32 @@ export async function generateIdeas(
 // user historically over-performing on the idea's topics. Clamped to 1..100.
 
 function scoreIdea(idea: ParsedIdea, trendMap: Map<string, number>, perfMap: Map<string, number>): number {
-  const topics = idea.topics.map((t) => t.toLowerCase())
+  const topics = idea.topics.map((t) => t.toLowerCase().trim()).filter(Boolean)
   let trendWeight = 0
   let perfRatio = 1
   for (const t of topics) {
-    if (trendMap.has(t)) trendWeight = Math.max(trendWeight, trendMap.get(t)!)
-    if (perfMap.has(t)) perfRatio = Math.max(perfRatio, perfMap.get(t)!)
+    trendWeight = Math.max(trendWeight, fuzzyLookup(trendMap, t))
+    const r = fuzzyLookup(perfMap, t)
+    if (r > 0) perfRatio = Math.max(perfRatio, r)
   }
-  const trendBonus = Math.round(20 * trendWeight)
-  const perfBonus = Math.round(15 * Math.max(0, Math.min(1, perfRatio - 1)))
-  const score = Math.round(0.7 * idea.baseScore + trendBonus + perfBonus)
-  return Math.max(1, Math.min(100, score))
+  // Use the model's full-range read directly (no flattening multiplier), lifted by how strongly
+  // the idea rides a current trend (+0..15) and how well the user historically does on its
+  // topics (+0..10). Clamped to 1..100.
+  const trendBonus = Math.round(15 * trendWeight)
+  const perfBonus = Math.round(10 * Math.max(0, Math.min(1, (perfRatio - 1) / 1.5)))
+  return Math.max(1, Math.min(100, idea.baseScore + trendBonus + perfBonus))
+}
+
+// Match topics loosely so "AI Development" benefits from the "AI" / "AI Tools" trends, etc.
+function fuzzyLookup(map: Map<string, number>, topic: string): number {
+  if (!topic) return 0
+  const exact = map.get(topic)
+  if (exact !== undefined) return exact
+  let best = 0
+  for (const [k, v] of map) {
+    if (k && (k.includes(topic) || topic.includes(k))) best = Math.max(best, v)
+  }
+  return best
 }
 
 // topic(lowercased) -> weight 0..1 relative to the top trend, across feed + RSS topics.

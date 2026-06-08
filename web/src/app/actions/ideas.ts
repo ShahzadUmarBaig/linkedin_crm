@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireUser } from '@/lib/auth'
-import { generateIdeas, rejectIdea, updateIdeaFields } from '@/lib/ideas'
+import { generateIdeas, rejectAllProposed, rejectIdea, updateIdeaFields } from '@/lib/ideas'
 import { approveIdea } from '@/lib/drafts'
 
 export async function triggerGenerateIdeas(force = false): Promise<
@@ -26,6 +26,17 @@ export async function rejectIdeaAction(ideaId: string): Promise<{ error?: string
     return { ok: true }
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'reject failed' }
+  }
+}
+
+export async function discardAllIdeasAction(): Promise<{ error?: string; ok?: true; discarded?: number }> {
+  const user = await requireUser()
+  try {
+    const discarded = await rejectAllProposed(user.id)
+    revalidatePath('/ideas')
+    return { ok: true, discarded }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'discard failed' }
   }
 }
 
