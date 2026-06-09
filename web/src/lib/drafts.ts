@@ -298,7 +298,7 @@ optimal date/time to post it, and (c) a detailed image-generation prompt.
 
 Return ONLY a JSON object (no prose, no markdown fences):
 {
-  "body": "The full LinkedIn post. 150-300 words. The provided 'hook' MUST be line 1 verbatim or near-verbatim. Use LinkedIn formatting: short paragraphs, blank lines between thoughts. End with a question or CTA, THEN a final line with 3-5 relevant hashtags. Match the user's tone EXACTLY.",
+  "body": "The full LinkedIn post in PLAIN TEXT (no markdown). 150-300 words. The provided 'hook' MUST be line 1 verbatim or near-verbatim. Short paragraphs with a blank line between them. Write in very simple, everyday English (see VOICE rules). End with a simple question, THEN a final line with 3-5 relevant hashtags. Keep the user's personality, but always in plain, simple words.",
   "scheduledFor": "ISO 8601 datetime in UTC. Must be at least 24 hours from the current time. Must not duplicate any time already in 'existingSlotsIso'. Pick a slot consistent with the user's past best-engagement windows; if there's no signal, default to a weekday morning (Tue/Wed/Thu around 14:00 UTC = 9am ET).",
   "schedulingReasoning": "One short sentence on WHY this slot. Reference the history data if it informed the choice.",
   "imagePrompt": "ONE rock-solid prompt for the FLUX.2 [pro] text-to-image model that reliably yields a single, accurate, professional LinkedIn visual. See the imagePrompt rules below for exactly how to write it."
@@ -309,6 +309,18 @@ Rules:
 - The body must NOT mention the source/inspiration post directly.
 - The body should sound like the user wrote it from scratch, not like an AI summary.
 - Avoid generic LinkedIn cliches ("excited to share", "I'm thrilled", "let me know your thoughts").
+
+VOICE & READABILITY (this matters a lot):
+- Write in VERY SIMPLE English that someone who learned English as a second language can read easily. Target a 6th-8th grade reading level.
+- Short sentences — most under ~15 words, one idea per sentence. Use common, everyday words. Use contractions (I'm, don't, it's).
+- Sound like a real person talking to a friend — warm, direct, plain. NOT a corporate post, NOT an essay, NOT literary.
+- Swap fancy/formal words for plain ones. Examples: "hidden behind a like or comment" not "dangled behind an engagement barrier"; "make hard things easy to understand" not "demystifying complex topics"; "goes against" not "counter to the spirit of"; "use" not "utilize"; "help" not "facilitate"; "a lot" not "a plethora".
+- Spoon-feed the point: explain it plainly like you're helping someone learn. No jargon unless you explain it in simple words right away.
+
+FORMATTING (LinkedIn shows PLAIN TEXT only — this is critical):
+- NEVER use markdown or formatting symbols: no asterisks (* or **), no underscores (_), no backticks, no # headings, no bold or italic. LinkedIn does NOT render them — they appear as literal characters and instantly look AI-generated.
+- Emphasize with word choice and short lines, never with symbols.
+- If you list a few points, put each on its own short line (you may begin a line with a plain "-"), but prefer short flowing sentences over lists.
 
 imagePrompt rules (written FOR the FLUX.2 [pro] model — depict the ARGUMENT, not the topic):
 - STEP 1 (do this first, in your head): identify the post's SINGLE central argument or claim — the specific point it makes, not its broad topic. ("Stop gating knowledge behind engagement" — not "knowledge".)
@@ -417,7 +429,7 @@ function parseDraftResponse(text: string): ParsedDraftResponse | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
 
-  const body = String(o.body ?? '').trim()
+  const body = sanitizeBody(String(o.body ?? ''))
   const scheduledForRaw = String(o.scheduledFor ?? '').trim()
   const schedulingReasoning = String(o.schedulingReasoning ?? '').trim()
   const imagePrompt = String(o.imagePrompt ?? o.image_prompt ?? '').trim() || null
@@ -437,6 +449,20 @@ function parseDraftResponse(text: string): ParsedDraftResponse | null {
   }
 
   return { body, scheduledFor: dt.toISOString(), schedulingReasoning, imagePrompt }
+}
+
+// LinkedIn renders plain text only. Strip any markdown the model slips in so asterisks/headings
+// never reach the post (they read as AI-generated). Keeps hashtags intact.
+function sanitizeBody(s: string): string {
+  return s
+    .replace(/\*\*(.+?)\*\*/g, '$1') // **bold**
+    .replace(/__(.+?)__/g, '$1') // __bold__
+    .replace(/\*(.+?)\*/g, '$1') // *italic*
+    .replace(/`/g, '') // backticks
+    .replace(/^\s{0,3}#{1,6}\s+/gm, '') // markdown headings (not hashtags — those have no space)
+    .replace(/^\s*\*\s+/gm, '- ') // leftover "* " bullets → "- "
+    .replace(/\n{3,}/g, '\n\n') // collapse extra blank lines
+    .trim()
 }
 
 function stripJsonFence(s: string): string {

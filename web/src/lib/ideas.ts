@@ -91,6 +91,7 @@ Return ONLY a JSON array of ideas (no prose, no markdown fences). Each idea obje
 Rules:
 - BALANCE across sources: across the set, include ideas grounded in own_post_pattern, inspiration_post, AND rss_item — do not take them all from one source. Use niche_research only to fill gaps.
 - Hooks must be distinct from each other AND from the existing-hooks list provided.
+- Write hooks in VERY SIMPLE, everyday English (a non-native speaker should get them instantly). Short, plain words. No markdown, no asterisks, no fancy/literary phrasing.
 - Use the user's tone exactly. If they sound casual, your hooks sound casual; if professional, professional.
 - A hook is NOT a question unless the question is provocative or contrarian.
 - If you cite a source, the angle must be a contrarian, additive, or deeper take — never a copy.
