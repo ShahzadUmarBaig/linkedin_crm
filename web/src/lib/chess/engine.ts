@@ -13,10 +13,16 @@ export interface RawScore {
   value: number // relative to the side to move
 }
 
+export interface EngineLine {
+  score: RawScore // relative to the side to move
+  pv: string[] // principal variation in UCI
+}
+
 export interface EvalResult {
   score: RawScore
   bestMove: string | null // UCI, e.g. "e2e4" or "e7e8q"
-  pv: string[] // principal variation in UCI
+  pv: string[] // principal variation in UCI (best line)
+  lines: EngineLine[] // top-N lines, index 0 = best (from MultiPV)
   depth: number
 }
 
@@ -60,36 +66,48 @@ export class ChessEngine {
     this.worker?.postMessage(cmd)
   }
 
+  private currentMultiPV = 1
+
   /** Evaluate one position to a fixed depth. Resolves on `bestmove`. */
-  async evaluate(fen: string, depth: number): Promise<EvalResult> {
+  async evaluate(fen: string, depth: number, multiPV = 1): Promise<EvalResult> {
     await this.init()
     return new Promise<EvalResult>((resolve) => {
-      let score: RawScore = { type: 'cp', value: 0 }
-      let pv: string[] = []
+      // collect the latest info line per multipv index
+      const byIndex = new Map<number, EngineLine>()
       let reachedDepth = 0
 
       this.onLine = (line: string) => {
         if (line.startsWith('info')) {
           const scoreMatch = line.match(/score (cp|mate) (-?\d+)/)
-          if (scoreMatch) {
-            score = { type: scoreMatch[1] as 'cp' | 'mate', value: parseInt(scoreMatch[2], 10) }
-          }
+          if (!scoreMatch) return
+          const idxMatch = line.match(/ multipv (\d+)/)
+          const idx = idxMatch ? parseInt(idxMatch[1], 10) : 1
           const depthMatch = line.match(/ depth (\d+)/)
           if (depthMatch) reachedDepth = parseInt(depthMatch[1], 10)
           const pvMatch = line.match(/ pv (.+)$/)
-          if (pvMatch) pv = pvMatch[1].trim().split(/\s+/)
+          byIndex.set(idx, {
+            score: { type: scoreMatch[1] as 'cp' | 'mate', value: parseInt(scoreMatch[2], 10) },
+            pv: pvMatch ? pvMatch[1].trim().split(/\s+/) : [],
+          })
         } else if (line.startsWith('bestmove')) {
           this.onLine = null
           const best = line.split(/\s+/)[1]
+          const lines = [...byIndex.keys()].sort((a, b) => a - b).map((k) => byIndex.get(k)!)
+          const first = lines[0] ?? { score: { type: 'cp' as const, value: 0 }, pv: [] }
           resolve({
-            score,
+            score: first.score,
             bestMove: best && best !== '(none)' ? best : null,
-            pv,
+            pv: first.pv,
+            lines,
             depth: reachedDepth,
           })
         }
       }
 
+      if (multiPV !== this.currentMultiPV) {
+        this.send(`setoption name MultiPV value ${multiPV}`)
+        this.currentMultiPV = multiPV
+      }
       this.send('ucinewgame')
       this.send(`position fen ${fen}`)
       this.send(`go depth ${depth}`)

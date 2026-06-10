@@ -110,6 +110,7 @@ export function ChessAnalyzer() {
       if (!engineRef.current) engineRef.current = new ChessEngine()
       const result = await analyzeGame(input, engineRef.current, {
         depth,
+        multiPV: 2,
         signal: abortRef.current,
         onProgress: (done, total) => setProgress(Math.round((done / total) * 100)),
       })

@@ -1,20 +1,29 @@
 import { Chess } from 'chess.js'
 import { ChessEngine, type RawScore } from './engine'
+import { isBookPosition } from './book'
 
 export type Classification =
+  | 'brilliant'
+  | 'great'
   | 'best'
   | 'excellent'
   | 'good'
+  | 'book'
   | 'inaccuracy'
   | 'mistake'
+  | 'miss'
   | 'blunder'
 
 export const CLASS_ORDER: Classification[] = [
+  'brilliant',
+  'great',
   'best',
   'excellent',
   'good',
+  'book',
   'inaccuracy',
   'mistake',
+  'miss',
   'blunder',
 ]
 
@@ -28,6 +37,7 @@ export interface PositionEval extends WhiteEval {
   fen: string
   bestMove: string | null // UCI for the side to move in this position
   pv: string[]
+  secondWhiteCp: number | null // White-POV scalar of the 2nd-best move (MultiPV), if any
 }
 
 export interface MoveAnalysis {
@@ -85,12 +95,42 @@ function toWhiteEval(score: RawScore, whiteToMove: boolean): WhiteEval {
   return { cp, mate: null, whiteCp: cp }
 }
 
-function classify(winDrop: number, playedBest: boolean): Classification {
-  if (playedBest || winDrop < 1) return 'best'
-  if (winDrop < 3) return 'excellent'
-  if (winDrop < 6) return 'good'
-  if (winDrop < 10) return 'inaccuracy'
-  if (winDrop < 20) return 'mistake'
+const PIECE_VALUE: Record<string, number> = { p: 1, n: 3, b: 3, r: 5, q: 9, k: 0 }
+
+/** Material balance (White − Black) in points from a FEN placement field. */
+function materialBalance(fen: string): number {
+  let bal = 0
+  for (const ch of fen.split(' ')[0]) {
+    const v = PIECE_VALUE[ch.toLowerCase()]
+    if (v == null) continue
+    bal += ch === ch.toUpperCase() ? v : -v
+  }
+  return bal
+}
+
+export interface ClassifyInput {
+  winBefore: number // mover POV win% assuming best play (before the move)
+  winAfter: number // mover POV win% after the move actually played
+  winDrop: number
+  playedBest: boolean
+  gap: number | null // win% by which best move beats 2nd best (mover POV); null if no 2nd
+  sacrifice: boolean // move gives up >= a minor piece of material (net) yet is best
+  inBook: boolean
+}
+
+function classify(i: ClassifyInput): Classification {
+  if (i.inBook) return 'book'
+  // Brilliant: a best sacrifice that keeps you at least equal and isn't trivially winning already.
+  if (i.playedBest && i.sacrifice && i.winAfter >= 50 && i.winBefore < 99) return 'brilliant'
+  // Great: the only good move — clearly better than the second choice.
+  if (i.playedBest && i.gap != null && i.gap >= 15 && i.winAfter >= 45) return 'great'
+  // Miss: you were better/winning and let a clearly superior resource slip (but not a full collapse).
+  if (!i.playedBest && i.winBefore >= 70 && i.winDrop >= 8 && i.winDrop < 25) return 'miss'
+  if (i.playedBest || i.winDrop < 1) return 'best'
+  if (i.winDrop < 3) return 'excellent'
+  if (i.winDrop < 6) return 'good'
+  if (i.winDrop < 10) return 'inaccuracy'
+  if (i.winDrop < 20) return 'mistake'
   return 'blunder'
 }
 
@@ -120,6 +160,7 @@ function parseTimeControl(tc: string | undefined): { base: number; inc: number }
 
 export interface AnalyzeOptions {
   depth: number
+  multiPV?: number // top-N lines per position (>=2 enables Great/Brilliant detection)
   onProgress?: (done: number, total: number) => void
   signal?: { aborted: boolean }
 }
@@ -152,6 +193,7 @@ export async function analyzeGame(
   const hasClocks = clockByPly.some((c, i) => i > 0 && c != null)
 
   // ---- evaluate every position ----
+  const multiPV = Math.max(1, opts.multiPV ?? 2)
   const positions: PositionEval[] = []
   for (let i = 0; i < fens.length; i++) {
     if (opts.signal?.aborted) throw new Error('aborted')
@@ -166,11 +208,12 @@ export async function analyzeGame(
       } else {
         we = { cp: 0, mate: null, whiteCp: 0 }
       }
-      positions.push({ fen, bestMove: null, pv: [], ...we })
+      positions.push({ fen, bestMove: null, pv: [], secondWhiteCp: null, ...we })
     } else {
-      const r = await engine.evaluate(fen, opts.depth)
+      const r = await engine.evaluate(fen, opts.depth, multiPV)
       const we = toWhiteEval(r.score, whiteToMove)
-      positions.push({ fen, bestMove: r.bestMove, pv: r.pv, ...we })
+      const second = r.lines[1] ? toWhiteEval(r.lines[1].score, whiteToMove).whiteCp : null
+      positions.push({ fen, bestMove: r.bestMove, pv: r.pv, secondWhiteCp: second, ...we })
     }
     opts.onProgress?.(i + 1, total)
   }
@@ -188,6 +231,25 @@ export async function analyzeGame(
     const playedBest = !!before.bestMove && before.bestMove === h.lan
     const bestSan = before.bestMove ? uciToSan(before.fen, before.bestMove) : null
 
+    // gap between best and 2nd-best (mover POV win%) — large gap ⇒ "only move"
+    let gap: number | null = null
+    if (before.secondWhiteCp != null) {
+      const secondWin = moverWhite ? winPercent(before.secondWhiteCp) : 100 - winPercent(before.secondWhiteCp)
+      gap = Math.max(0, winBefore - secondWin)
+    }
+
+    // sacrifice: after the move + the opponent's best reply, the mover is down
+    // ≥ a minor piece of material (i.e. the move gives material away).
+    const matBefore = moverWhite ? materialBalance(before.fen) : -materialBalance(before.fen)
+    let matAfterReply = moverWhite ? materialBalance(after.fen) : -materialBalance(after.fen)
+    if (after.bestMove) {
+      const reply = replayUci(after.fen, [after.bestMove])
+      if (reply) matAfterReply = moverWhite ? materialBalance(reply) : -materialBalance(reply)
+    }
+    const sacrifice = matAfterReply - matBefore <= -2
+
+    const inBook = i + 1 <= 20 && isBookPosition(after.fen)
+
     const ply = i + 1
     const clockSeconds = clockByPly[ply]
     let timeSpent: number | null = null
@@ -204,7 +266,7 @@ export async function analyzeGame(
       lan: h.lan,
       from: h.from,
       to: h.to,
-      classification: classify(winDrop, playedBest),
+      classification: classify({ winBefore, winAfter, winDrop, playedBest, gap, sacrifice, inBook }),
       winDrop,
       bestMove: before.bestMove,
       bestSan,
@@ -237,7 +299,10 @@ function summarize(
   name: string,
   elo: string | null,
 ): PlayerSummary {
-  const counts: Counts = { best: 0, excellent: 0, good: 0, inaccuracy: 0, mistake: 0, blunder: 0 }
+  const counts: Counts = {
+    brilliant: 0, great: 0, best: 0, excellent: 0, good: 0,
+    book: 0, inaccuracy: 0, mistake: 0, miss: 0, blunder: 0,
+  }
   let accSum = 0
   for (const m of moves) {
     counts[m.classification]++
@@ -250,6 +315,20 @@ function summarize(
   }
   const accuracy = moves.length ? accSum / moves.length : 100
   return { accuracy, name, elo, ...counts }
+}
+
+/** Play a sequence of UCI moves on a FEN; returns the resulting FEN or null. */
+function replayUci(fen: string, ucis: string[]): string | null {
+  try {
+    const c = new Chess(fen)
+    for (const u of ucis) {
+      const m = c.move({ from: u.slice(0, 2), to: u.slice(2, 4), promotion: u.length > 4 ? u[4] : undefined })
+      if (!m) return null
+    }
+    return c.fen()
+  } catch {
+    return null
+  }
 }
 
 /** Convert a UCI move to SAN in the context of a FEN. */
