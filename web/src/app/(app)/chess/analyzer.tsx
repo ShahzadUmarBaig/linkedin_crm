@@ -186,7 +186,7 @@ export function ChessAnalyzer() {
         </div>
 
         {analysis && (
-          <div className="g2 gap12">
+          <div className="stack gap12">
             <SummaryCard title={analysis.headers.White || 'White'} summary={analysis.white} />
             <SummaryCard title={analysis.headers.Black || 'Black'} summary={analysis.black} />
           </div>
