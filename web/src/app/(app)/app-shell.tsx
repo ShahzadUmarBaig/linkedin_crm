@@ -22,6 +22,7 @@ const TITLES: Record<string, [string, string]> = {
   '/rss': ['RSS feeds', 'Newsletters & blogs feeding the engine'],
   '/profile': ['Profile', 'Your niche, pillars, tone & audience'],
   '/settings': ['Settings', 'API keys, models & budget'],
+  '/chess': ['Chess analyzer', 'Paste a PGN — Stockfish finds your mistakes & best moves'],
 }
 
 function titleFor(pathname: string): [string, string] {
@@ -72,6 +73,9 @@ export function AppShell({
         <div className="navlbl">Account</div>
         <NavItem href="/profile" label="Profile" active={isActive('/profile')} circle />
         <NavItem href="/settings" label="Settings" active={isActive('/settings')} />
+
+        <div className="navlbl">Personal</div>
+        <NavItem href="/chess" label="Chess analyzer" active={isActive('/chess')} circle />
 
         <Autopilot enabled={autopilotEnabled} lastRunAt={lastAutopilotRunAt} />
       </aside>

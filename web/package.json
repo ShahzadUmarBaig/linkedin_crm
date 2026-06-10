@@ -14,10 +14,12 @@
     "@google/genai": "^2.7.0",
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.106.2",
+    "chess.js": "^1.4.0",
     "next": "16.2.6",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "rss-parser": "^3.13.0"
+    "rss-parser": "^3.13.0",
+    "stockfish": "^18.0.7"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
