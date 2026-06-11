@@ -73,6 +73,13 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
     throw new Error('AI did not return a valid draft. Try again.')
   }
 
+  // 4b. Guard the image prompt: rewrite it around a real object if the model
+  // slipped into abstract AI-stock-art (robots, glowing data, holograms, UI…).
+  const imagePrompt = await ensureConcreteImagePrompt(userId, parsed.imagePrompt, {
+    body: parsed.body,
+    concreteSubject: parsed.concreteSubject,
+  })
+
   // 5. Insert draft
   const { data: draft, error: draftErr } = await supabase
     .from('drafts')
@@ -80,7 +87,7 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
       user_id: userId,
       idea_id: ideaId,
       body: parsed.body,
-      image_prompt: parsed.imagePrompt,
+      image_prompt: imagePrompt,
       version: 1,
       ai_run_id: response.aiRunId || null,
     })
@@ -115,9 +122,9 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
 
   // 8. Auto-generate the visual so the post is fully ready on review. Best-effort: never let an
   // image failure (no Google key, transient API error) block the approval.
-  if (parsed.imagePrompt) {
+  if (imagePrompt) {
     try {
-      await generatePostImages(userId, draft.id, parsed.imagePrompt, 1)
+      await generatePostImages(userId, draft.id, imagePrompt, 1)
     } catch (err) {
       console.error('[approve] image generation failed (draft still created)', err)
     }
@@ -173,14 +180,19 @@ export async function regenerateDraft(
   const parsed = parseDraftResponse(response.text)
   if (!parsed) throw new Error('AI did not return a valid draft. Try again.')
 
+  const imagePrompt = await ensureConcreteImagePrompt(userId, parsed.imagePrompt, {
+    body: parsed.body,
+    concreteSubject: parsed.concreteSubject,
+  })
+
   const { error } = await supabase
     .from('drafts')
-    .update({ body: parsed.body, image_prompt: parsed.imagePrompt, ai_run_id: response.aiRunId || null, updated_at: new Date().toISOString() })
+    .update({ body: parsed.body, image_prompt: imagePrompt, ai_run_id: response.aiRunId || null, updated_at: new Date().toISOString() })
     .eq('id', draftId)
     .eq('user_id', userId)
   if (error) throw new Error(`draft update: ${error.message}`)
 
-  return { body: parsed.body, imagePrompt: parsed.imagePrompt }
+  return { body: parsed.body, imagePrompt }
 }
 
 // ---------- context loaders ----------
@@ -301,7 +313,9 @@ Return ONLY a JSON object (no prose, no markdown fences):
   "body": "The full LinkedIn post in PLAIN TEXT (no markdown). 150-300 words. The provided 'hook' MUST be line 1 verbatim or near-verbatim. Short paragraphs with a blank line between them. Write in very simple, everyday English (see VOICE rules). End with a simple question, THEN a final line with 3-5 relevant hashtags. Keep the user's personality, but always in plain, simple words.",
   "scheduledFor": "ISO 8601 datetime in UTC. Must be at least 24 hours from the current time. Must not duplicate any time already in 'existingSlotsIso'. Pick a slot consistent with the user's past best-engagement windows; if there's no signal, default to a weekday morning (Tue/Wed/Thu around 14:00 UTC = 9am ET).",
   "schedulingReasoning": "One short sentence on WHY this slot. Reference the history data if it informed the choice.",
-  "imagePrompt": "ONE rock-solid prompt for the FLUX.2 [pro] text-to-image model that reliably yields a single, accurate, professional LinkedIn visual. See the imagePrompt rules below for exactly how to write it."
+  "centralArgument": "In ONE short sentence: the post's single specific claim or argument — NOT its broad topic. ('Adapting beats fearing the AI shift' — not 'AI and careers'.)",
+  "concreteSubject": "ONE concrete, real, physical, photographable object or staged real-world scene that visually argues that claim — something a photographer could actually place on a table or stage in a room. This is MANDATORY and it must NOT be a robot, a hand, a hologram, a glowing data/code stream, a brain, a circuit board, a phone/screen UI, or any floating digital element.",
+  "imagePrompt": "ONE rock-solid prompt for the FLUX.2 [pro] text-to-image model, built ENTIRELY around 'concreteSubject'. See the imagePrompt rules below for exactly how to write it."
 }
 
 Rules:
@@ -322,18 +336,22 @@ FORMATTING (LinkedIn shows PLAIN TEXT only — this is critical):
 - Emphasize with word choice and short lines, never with symbols.
 - If you list a few points, put each on its own short line (you may begin a line with a plain "-"), but prefer short flowing sentences over lists.
 
-imagePrompt rules (written FOR the FLUX.2 [pro] model — depict the ARGUMENT, not the topic):
-- STEP 1 (do this first, in your head): identify the post's SINGLE central argument or claim — the specific point it makes, not its broad topic. ("Stop gating knowledge behind engagement" — not "knowledge".)
-- STEP 2: invent ONE concrete, real-object scene that visually DEPICTS that argument like a visual metaphor a photographer could actually stage, with a small storytelling DETAIL that carries the point. WORKED EXAMPLE — for a post arguing "stop gating knowledge behind engagement", the right image is a chrome stanchion post with its red velvet rope UNCLIPPED and dropped open on the floor, in front of an open doorway glowing with warm light — the dropped rope IS the message. A glowing book on a pedestal would be WRONG: that is a generic mood-image of the topic, not the argument. Always choose the staged real-object metaphor over the pretty mood-image.
-- Then write the prompt as ONE single paragraph, ~120-200 words. FLUX follows focused prompts far more accurately than bloated ones — be vivid but tight, do NOT pad to 400 words.
-- FRONT-LOAD that concrete metaphor scene in the first sentence (one clear focal subject/scene — FLUX is most accurate with a single subject, not a busy scene).
-- Then describe, in order: the art style (e.g. "clean minimal 3D render", "editorial flat vector illustration", "soft cinematic photograph"), composition & framing (focal point, generous negative space), color palette (2-3 specific colors on a calm, professional LinkedIn aesthetic), lighting (direction + softness), and overall mood.
-- Use POSITIVE phrasing only — describe what SHOULD appear. FLUX ignores negative/"avoid" lists, so never write "no X". To keep it clean, instead say things like "a wordless, uncluttered composition" rather than "no text".
-- Explicitly request "landscape orientation, no text or lettering, no logos, no watermarks" as a short positive clause (FLUX honors a brief in-prompt instruction better than a long avoid-list).
-- Pick a metaphor that genuinely reinforces THIS post's message; avoid generic stock-photo cliches (handshakes, glowing brains, ascending arrows).
-- CRITICAL: never describe clusters of small abstract icons, symbols, glyphs, or "floating UI elements" — FLUX renders those as unreadable squiggles. Choose ONE clear, concretely-renderable real object/scene as the subject (a physical object, a real device, a tangible material, a real environment). If a metaphor needs a "tool", make it one recognizable real tool rendered cleanly, not a constellation of vague tech icons.
-- Prefer real, photographable or cleanly-3D-renderable things over abstract holographic projections.
-- End with 3-5 quality tags: "high detail, sharp focus, professional, 4k".`
+imagePrompt rules (written FOR the FLUX.2 [pro] model — depict the ARGUMENT with ONE real object, NEVER abstract tech art):
+- HARD BAN (this is the most important rule). These tropes instantly look like generic AI stock art, and FLUX renders them as unreadable gibberish. NEVER depict, name, or imply ANY of: robots, androids, humanoids, cyborgs, drones, robotic/mechanical/bionic hands; glowing "data", "code", "information", or "light" streams, trails, or particles; holograms or holographic projections; floating UI, dashboards, screens, icons, glyphs, or symbols; phones/laptops showing an interface; neural networks, node-and-line webs, glowing brains, circuit boards, motherboards, binary/matrix code. Also NEVER use the words "abstract", "digital", "futuristic", "cyber", "high-tech", or "tech" to describe the scene. If your first idea contains ANY of these, discard it and choose a real, physical, everyday object instead.
+- Build the whole prompt AROUND the 'concreteSubject' field you already committed to above: ONE real, physical, photographable object or staged real-world scene, with a small storytelling DETAIL that carries the argument. The viewer should "get it" from a real object, the way a good magazine photo essay works.
+- WORKED EXAMPLES (notice: every subject is a real thing you could hold):
+  • "stop gating knowledge behind engagement" → a chrome stanchion post with its red velvet rope UNCLIPPED and dropped on the floor in front of an open, warmly lit doorway. The dropped rope IS the message.
+  • "LLMs erode my career, so adapt instead of fear" → a well-worn wooden hand plane resting on a half-finished dovetail joint with fresh curls of wood shaving around it — old craft, still building by hand. (NOT a robot hand.)
+  • "you can build anything now, but you still have zero users" → a single freshly-baked pie cooling on a windowsill, perfect and untouched, with a stack of clean empty plates beside it and no people. The empty plates ARE the message. (NOT a phone showing a user count.)
+- Write the prompt as ONE paragraph, ~110-180 words — vivid but tight, FLUX follows focused prompts far better than bloated ones.
+- FRONT-LOAD that one concrete subject in the very first sentence (a single clear focal subject — FLUX is most accurate with ONE subject, not a busy scene).
+- Then describe, in this order: a REAL-WORLD art style (pick one: "soft cinematic product photograph", "matte still-life photograph", "clean minimal 3D render of a real object", "editorial flat-vector illustration"), composition & framing (focal point + generous negative space), a calm 2-3 colour palette (professional LinkedIn aesthetic), lighting (direction + softness), and mood.
+- Use POSITIVE phrasing only — FLUX ignores "no X" lists. Say "a clean, wordless composition" rather than "no text".
+- Include this exact clause near the end: "landscape orientation, a clean wordless composition with no text or lettering, no logos, no watermarks".
+- For posts about data, numbers, growth, or metrics: depict a SINGLE real chart on a physical surface (one line drawn flat along the bottom of a paper graph, a bar chart on a whiteboard, a printed report) — never a screen, app UI, or floating graphic.
+- End with: "high detail, sharp focus, professional, 4k".
+
+FINAL CHECK before you answer — re-read your imagePrompt. If it mentions a robot, a hand, glowing data/code, a hologram, floating icons/UI, a screen interface, a brain, a circuit board, or the words abstract/digital/futuristic/cyber/tech, then it is WRONG: rewrite it around a single real, physical object. The image must look like a photograph of a real thing sitting in the real world, not like AI art.`
 
 function buildUserPrompt(args: {
   profile: ProfileContext
@@ -407,6 +425,7 @@ interface ParsedDraftResponse {
   scheduledFor: string
   schedulingReasoning: string
   imagePrompt: string | null
+  concreteSubject: string | null
 }
 
 function parseDraftResponse(text: string): ParsedDraftResponse | null {
@@ -433,6 +452,7 @@ function parseDraftResponse(text: string): ParsedDraftResponse | null {
   const scheduledForRaw = String(o.scheduledFor ?? '').trim()
   const schedulingReasoning = String(o.schedulingReasoning ?? '').trim()
   const imagePrompt = String(o.imagePrompt ?? o.image_prompt ?? '').trim() || null
+  const concreteSubject = String(o.concreteSubject ?? o.concrete_subject ?? '').trim() || null
   if (!body || !scheduledForRaw) return null
 
   const dt = new Date(scheduledForRaw)
@@ -445,10 +465,11 @@ function parseDraftResponse(text: string): ParsedDraftResponse | null {
       scheduledFor: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
       schedulingReasoning: schedulingReasoning + ' (auto-bumped: AI picked too soon)',
       imagePrompt,
+      concreteSubject,
     }
   }
 
-  return { body, scheduledFor: dt.toISOString(), schedulingReasoning, imagePrompt }
+  return { body, scheduledFor: dt.toISOString(), schedulingReasoning, imagePrompt, concreteSubject }
 }
 
 // LinkedIn renders plain text only. Strip any markdown the model slips in so asterisks/headings
@@ -468,4 +489,57 @@ function sanitizeBody(s: string): string {
 function stripJsonFence(s: string): string {
   const match = s.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
   return match ? match[1] : s
+}
+
+// ---------- image-prompt cliché guard ----------
+// Deterministic backstop: even with the hardened spec, the model occasionally
+// slips into AI-stock-art tropes (robots, glowing data, holograms, floating UI),
+// which read as "AI slop" and which FLUX renders as gibberish. We detect those
+// and rewrite the prompt ONCE around a real, physical object.
+const CLICHE_PATTERNS: RegExp[] = [
+  /\b(robot|robotic|android|humanoid|cyborg|bionic|drone)\b/i,
+  /\b(mechanical|robotic) hand\b/i,
+  /\bhologram|holographic\b/i,
+  /\b(neural network|circuit board|motherboard|binary code|silicon)\b/i,
+  /\bglowing (data|code|lines|particles|stream|dots|network|orb)\b/i,
+  /\b(data|code|light|information) stream\b/i,
+  /\bstream of (data|code|light|information|particles)\b/i,
+  /\bfloating (ui|icons?|elements?|interface|screens?|panels?|holograms?|symbols?|glyphs?)\b/i,
+  /\b(glowing|digital) brain\b/i,
+  /\b(futuristic|cyberpunk|sci-?fi|high-tech|cyber)\b/i,
+  /\babstract\b/i,
+]
+
+export function isClichedImagePrompt(prompt: string): boolean {
+  return CLICHE_PATTERNS.some((re) => re.test(prompt))
+}
+
+// Returns a clean, concrete prompt. If the given prompt is already clean, returns it
+// unchanged (no extra AI call). Only on a cliché hit does it spend one cheap rewrite.
+export async function ensureConcreteImagePrompt(
+  userId: string,
+  imagePrompt: string | null,
+  ctx: { body: string; concreteSubject: string | null },
+): Promise<string | null> {
+  if (!imagePrompt || !isClichedImagePrompt(imagePrompt)) return imagePrompt
+
+  const system = `You fix text-to-image prompts that drifted into generic AI stock art.
+Rewrite the prompt so it depicts ONE concrete, real, physical, photographable object or staged real-world scene that works as a visual metaphor for the post's argument — the way a magazine photo essay makes a point with a real object.
+HARD BAN — never depict, name, or imply: robots, androids, drones, robotic/mechanical/bionic hands; glowing data/code/light streams, trails, or particles; holograms; floating UI, icons, screens, dashboards, glyphs, or symbols; phones/laptops showing an interface; neural networks, glowing brains, circuit boards, binary code. Never use the words abstract, digital, futuristic, cyber, or tech to describe the scene.
+Keep it to ONE paragraph, ~110-160 words: front-load the single real object, then a real-world art style (e.g. "soft cinematic product photograph", "matte still-life photograph", "clean minimal 3D render of a real object"), composition with generous negative space, a calm 2-3 colour palette, soft directional lighting, and mood. Include near the end: "landscape orientation, a clean wordless composition with no text or lettering, no logos, no watermarks". End with "high detail, sharp focus, professional, 4k".
+Return ONLY the rewritten prompt paragraph — no preamble, no quotes, no JSON.`
+
+  const subjectHint = ctx.concreteSubject
+    ? `Use this real-object metaphor as the subject: ${ctx.concreteSubject}`
+    : `Invent a fitting real, physical, everyday-object metaphor for the post.`
+  const user = `POST:\n${ctx.body}\n\n${subjectHint}\n\nThe current prompt is too abstract / AI-stock and must be rewritten:\n${imagePrompt}`
+
+  try {
+    const r = await generate({ userId, task: 'draft_write', system, user, maxTokens: 700 })
+    const rewritten = stripJsonFence(r.text).replace(/^["'\s]+|["'\s]+$/g, '').trim()
+    if (rewritten.length > 40 && !isClichedImagePrompt(rewritten)) return rewritten
+  } catch (err) {
+    console.error('[drafts] image-prompt rewrite failed; using original', err)
+  }
+  return imagePrompt
 }
