@@ -96,10 +96,12 @@ export async function markSlotPosted(userId: string, slotId: string): Promise<vo
   const supabase = await createSupabaseServerClient()
   const now = new Date().toISOString()
 
-  // Update slot.
+  // Update slot. Also move scheduled_for to now: "I posted" means it went live at
+  // this moment, so the calendar should show it on the day/time it was actually
+  // posted, not the original planned slot.
   const { data: slot, error: slotErr } = await supabase
     .from('calendar_slots')
-    .update({ status: 'posted', posted_at: now })
+    .update({ status: 'posted', posted_at: now, scheduled_for: now })
     .eq('id', slotId)
     .eq('user_id', userId)
     .select('draft_id')
