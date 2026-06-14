@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { regenerateDraftAction, rescheduleSlotAction, updateDraftBodyAction } from '@/app/actions/calendar'
+import { regenerateDraftAction, regenerateImagePromptAction, rescheduleSlotAction, updateDraftBodyAction } from '@/app/actions/calendar'
 import { generateImagesAction, selectImageAction } from '@/app/actions/images'
 import type { CalendarSlotView } from '@/lib/calendar'
 import { formatDate, formatDateTime, truncate } from '@/lib/format'
@@ -30,6 +30,7 @@ export function ComposeView({ view, drafts = [] }: { view: CalendarSlotView; dra
   const [images, setImages] = useState<string[]>(view.draft_image_urls ?? [])
   const [selectedImage, setSelectedImage] = useState<string | null>(view.draft_selected_image_url ?? null)
   const [genImg, startGenImg] = useTransition()
+  const [genPrompt, startGenPrompt] = useTransition()
   const [rescheduling, setRescheduling] = useState(false)
   const [when, setWhen] = useState(toLocalInput(view.scheduled_for))
   const [busy, startBusy] = useTransition()
@@ -70,6 +71,19 @@ export function ComposeView({ view, drafts = [] }: { view: CalendarSlotView; dra
   function pickImage(url: string) {
     setSelectedImage(url)
     if (view.draft_id) void selectImageAction(view.draft_id, url)
+  }
+
+  // Re-run ONLY the image prompt through the current (improved) generator —
+  // leaves the post body untouched. Good for older drafts with abstract prompts.
+  function regenerateImagePrompt() {
+    if (!view.draft_id) return
+    setMsg(null)
+    startGenPrompt(async () => {
+      const r = await regenerateImagePromptAction(view.draft_id!)
+      if ('error' in r) return setMsg({ kind: 'err', text: r.error })
+      setImagePrompt(r.imagePrompt)
+      setMsg({ kind: 'ok', text: 'New image prompt generated — review it, then Generate image.' })
+    })
   }
 
   function regenerate() {
@@ -193,9 +207,17 @@ export function ComposeView({ view, drafts = [] }: { view: CalendarSlotView; dra
             placeholder={FALLBACK_IMAGE_PROMPT}
             onChange={(e) => setImagePrompt(e.target.value)}
           />
-          <div className="row gap6 mt12">
-            <button className="btn primary sm" onClick={generateImages} disabled={genImg || !imagePrompt.trim()}>
+          <div className="row gap6 mt12 wrap">
+            <button className="btn primary sm" onClick={generateImages} disabled={genImg || genPrompt || !imagePrompt.trim()}>
               <span className="ico" />{genImg ? 'Generating…' : images.length ? 'Regenerate' : 'Generate image'}
+            </button>
+            <button
+              className="btn ghost sm"
+              onClick={regenerateImagePrompt}
+              disabled={genPrompt || genImg || !view.draft_id}
+              title="Rewrite the image prompt with the latest concrete-visual generator (leaves your post text unchanged)"
+            >
+              {genPrompt ? 'Rewriting…' : 'Regenerate prompt'}
             </button>
             <button className="btn ghost sm" onClick={copyImagePrompt} disabled={!imagePrompt.trim()}>Copy prompt</button>
           </div>

@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import { requireUser } from '@/lib/auth'
 import { markSlotPosted, rescheduleSlot, skipSlot, updateDraftBody } from '@/lib/calendar'
-import { regenerateDraft } from '@/lib/drafts'
+import { regenerateDraft, regenerateImagePrompt } from '@/lib/drafts'
 
 export async function markSlotPostedAction(slotId: string): Promise<{ error?: string; ok?: true }> {
   const user = await requireUser()
@@ -55,6 +55,20 @@ export async function regenerateDraftAction(
     return { ok: true, ...r }
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'regenerate failed' }
+  }
+}
+
+export async function regenerateImagePromptAction(
+  draftId: string,
+): Promise<{ error: string } | { ok: true; imagePrompt: string }> {
+  const user = await requireUser()
+  try {
+    const r = await regenerateImagePrompt(user.id, draftId)
+    revalidatePath('/calendar')
+    revalidatePath('/compose')
+    return { ok: true, ...r }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'failed' }
   }
 }
 

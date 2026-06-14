@@ -195,6 +195,67 @@ export async function regenerateDraft(
   return { body: parsed.body, imagePrompt }
 }
 
+// Regenerate ONLY the image prompt for an existing draft, using the current
+// (improved) image-prompt generator — leaves the post body and schedule untouched.
+// For older drafts whose prompt predates the concrete-object rules.
+export async function regenerateImagePrompt(
+  userId: string,
+  draftId: string,
+): Promise<{ imagePrompt: string }> {
+  const supabase = createSupabaseServiceClient()
+
+  const { data: draft } = await supabase
+    .from('drafts')
+    .select('id, body')
+    .eq('id', draftId)
+    .eq('user_id', userId)
+    .maybeSingle()
+  if (!draft?.body) throw new Error('Draft not found.')
+
+  const response = await generate({
+    userId,
+    task: 'draft_write',
+    system: IMAGE_PROMPT_ONLY_SYSTEM,
+    user: `POST:\n${draft.body}`,
+    maxTokens: 900,
+  })
+
+  const parsed = parseImageOnlyResponse(response.text)
+  if (!parsed) throw new Error('AI did not return a valid image prompt. Try again.')
+
+  // Same cliché guard as the main pipeline.
+  const guarded = await ensureConcreteImagePrompt(userId, parsed.imagePrompt, {
+    body: draft.body,
+    concreteSubject: parsed.concreteSubject,
+  })
+  const imagePrompt = guarded ?? parsed.imagePrompt
+
+  const { error } = await supabase
+    .from('drafts')
+    .update({ image_prompt: imagePrompt, updated_at: new Date().toISOString() })
+    .eq('id', draftId)
+    .eq('user_id', userId)
+  if (error) throw new Error(`image prompt update: ${error.message}`)
+
+  return { imagePrompt }
+}
+
+function parseImageOnlyResponse(text: string): { concreteSubject: string | null; imagePrompt: string } | null {
+  let cleaned = stripJsonFence(text).trim()
+  const f = cleaned.indexOf('{')
+  const l = cleaned.lastIndexOf('}')
+  if (f !== -1 && l > f) cleaned = cleaned.slice(f, l + 1)
+  try {
+    const o = JSON.parse(cleaned) as Record<string, unknown>
+    const imagePrompt = String(o.imagePrompt ?? o.image_prompt ?? '').trim()
+    if (!imagePrompt) return null
+    const concreteSubject = String(o.concreteSubject ?? o.concrete_subject ?? '').trim() || null
+    return { concreteSubject, imagePrompt }
+  } catch {
+    return null
+  }
+}
+
 // ---------- context loaders ----------
 
 type Supa = ReturnType<typeof createSupabaseServiceClient>
@@ -305,6 +366,38 @@ interface ProfileContext {
   posting_frequency_per_week: number
 }
 
+// Shared image-prompt spec — used by the full draft writer AND the standalone
+// "regenerate image prompt" generator, so the two never drift apart.
+const IMAGE_PROMPT_RULES = `imagePrompt rules (written FOR the FLUX.2 [pro] model — depict the ARGUMENT with ONE real object, NEVER abstract tech art):
+- HARD BAN (this is the most important rule). These tropes instantly look like generic AI stock art, and FLUX renders them as unreadable gibberish. NEVER depict, name, or imply ANY of: robots, androids, humanoids, cyborgs, drones, robotic/mechanical/bionic hands; glowing "data", "code", "information", or "light" streams, trails, or particles; holograms or holographic projections; floating UI, dashboards, screens, icons, glyphs, or symbols; phones/laptops showing an interface; neural networks, node-and-line webs, glowing brains, circuit boards, motherboards, binary/matrix code. Also NEVER use the words "abstract", "digital", "futuristic", "cyber", "high-tech", or "tech" to describe the scene. If your first idea contains ANY of these, discard it and choose a real, physical, everyday object instead.
+- Build the whole prompt AROUND the 'concreteSubject' field you already committed to above: ONE real, physical, photographable object or staged real-world scene, with a small storytelling DETAIL that carries the argument. The viewer should "get it" from a real object, the way a good magazine photo essay works.
+- WORKED EXAMPLES (notice: every subject is a real thing you could hold):
+  • "stop gating knowledge behind engagement" → a chrome stanchion post with its red velvet rope UNCLIPPED and dropped on the floor in front of an open, warmly lit doorway. The dropped rope IS the message.
+  • "LLMs erode my career, so adapt instead of fear" → a well-worn wooden hand plane resting on a half-finished dovetail joint with fresh curls of wood shaving around it — old craft, still building by hand. (NOT a robot hand.)
+  • "you can build anything now, but you still have zero users" → a single freshly-baked pie cooling on a windowsill, perfect and untouched, with a stack of clean empty plates beside it and no people. The empty plates ARE the message. (NOT a phone showing a user count.)
+- Write the prompt as ONE paragraph, ~110-180 words — vivid but tight, FLUX follows focused prompts far better than bloated ones.
+- FRONT-LOAD that one concrete subject in the very first sentence (a single clear focal subject — FLUX is most accurate with ONE subject, not a busy scene).
+- Then describe, in this order: a REAL-WORLD art style (pick one: "soft cinematic product photograph", "matte still-life photograph", "clean minimal 3D render of a real object", "editorial flat-vector illustration"), composition & framing (focal point + generous negative space), a calm 2-3 colour palette (professional LinkedIn aesthetic), lighting (direction + softness), and mood.
+- Use POSITIVE phrasing only — FLUX ignores "no X" lists. Say "a clean, wordless composition" rather than "no text".
+- Include this exact clause near the end: "landscape orientation, a clean wordless composition with no text or lettering, no logos, no watermarks".
+- For posts about data, numbers, growth, or metrics: depict a SINGLE real chart on a physical surface (one line drawn flat along the bottom of a paper graph, a bar chart on a whiteboard, a printed report) — never a screen, app UI, or floating graphic.
+- End with: "high detail, sharp focus, professional, 4k".
+
+FINAL CHECK before you answer — re-read your imagePrompt. If it mentions a robot, a hand, glowing data/code, a hologram, floating icons/UI, a screen interface, a brain, a circuit board, or the words abstract/digital/futuristic/cyber/tech, then it is WRONG: rewrite it around a single real, physical object. The image must look like a photograph of a real thing sitting in the real world, not like AI art.`
+
+// Standalone generator: rewrite ONLY the image prompt for an existing post body,
+// using the same hardened rules (no body/schedule changes). Powers "Regenerate prompt".
+const IMAGE_PROMPT_ONLY_SYSTEM = `You write ONE image-generation prompt for the FLUX.2 [pro] text-to-image model, for the LinkedIn post given below.
+
+Return ONLY a JSON object (no prose, no markdown fences):
+{
+  "centralArgument": "In ONE short sentence: the post's single specific claim or argument — NOT its broad topic.",
+  "concreteSubject": "ONE concrete, real, physical, photographable object or staged real-world scene that visually argues that claim. MANDATORY. It must NOT be a robot, a hand, a hologram, a glowing data/code stream, a brain, a circuit board, a phone/screen UI, or any floating digital element.",
+  "imagePrompt": "The final FLUX prompt, built ENTIRELY around concreteSubject, following the rules below."
+}
+
+${IMAGE_PROMPT_RULES}`
+
 const SYSTEM_PROMPT = `You complete an approved LinkedIn post idea into (a) a publishable draft, (b) the
 optimal date/time to post it, and (c) a detailed image-generation prompt.
 
@@ -336,22 +429,7 @@ FORMATTING (LinkedIn shows PLAIN TEXT only — this is critical):
 - Emphasize with word choice and short lines, never with symbols.
 - If you list a few points, put each on its own short line (you may begin a line with a plain "-"), but prefer short flowing sentences over lists.
 
-imagePrompt rules (written FOR the FLUX.2 [pro] model — depict the ARGUMENT with ONE real object, NEVER abstract tech art):
-- HARD BAN (this is the most important rule). These tropes instantly look like generic AI stock art, and FLUX renders them as unreadable gibberish. NEVER depict, name, or imply ANY of: robots, androids, humanoids, cyborgs, drones, robotic/mechanical/bionic hands; glowing "data", "code", "information", or "light" streams, trails, or particles; holograms or holographic projections; floating UI, dashboards, screens, icons, glyphs, or symbols; phones/laptops showing an interface; neural networks, node-and-line webs, glowing brains, circuit boards, motherboards, binary/matrix code. Also NEVER use the words "abstract", "digital", "futuristic", "cyber", "high-tech", or "tech" to describe the scene. If your first idea contains ANY of these, discard it and choose a real, physical, everyday object instead.
-- Build the whole prompt AROUND the 'concreteSubject' field you already committed to above: ONE real, physical, photographable object or staged real-world scene, with a small storytelling DETAIL that carries the argument. The viewer should "get it" from a real object, the way a good magazine photo essay works.
-- WORKED EXAMPLES (notice: every subject is a real thing you could hold):
-  • "stop gating knowledge behind engagement" → a chrome stanchion post with its red velvet rope UNCLIPPED and dropped on the floor in front of an open, warmly lit doorway. The dropped rope IS the message.
-  • "LLMs erode my career, so adapt instead of fear" → a well-worn wooden hand plane resting on a half-finished dovetail joint with fresh curls of wood shaving around it — old craft, still building by hand. (NOT a robot hand.)
-  • "you can build anything now, but you still have zero users" → a single freshly-baked pie cooling on a windowsill, perfect and untouched, with a stack of clean empty plates beside it and no people. The empty plates ARE the message. (NOT a phone showing a user count.)
-- Write the prompt as ONE paragraph, ~110-180 words — vivid but tight, FLUX follows focused prompts far better than bloated ones.
-- FRONT-LOAD that one concrete subject in the very first sentence (a single clear focal subject — FLUX is most accurate with ONE subject, not a busy scene).
-- Then describe, in this order: a REAL-WORLD art style (pick one: "soft cinematic product photograph", "matte still-life photograph", "clean minimal 3D render of a real object", "editorial flat-vector illustration"), composition & framing (focal point + generous negative space), a calm 2-3 colour palette (professional LinkedIn aesthetic), lighting (direction + softness), and mood.
-- Use POSITIVE phrasing only — FLUX ignores "no X" lists. Say "a clean, wordless composition" rather than "no text".
-- Include this exact clause near the end: "landscape orientation, a clean wordless composition with no text or lettering, no logos, no watermarks".
-- For posts about data, numbers, growth, or metrics: depict a SINGLE real chart on a physical surface (one line drawn flat along the bottom of a paper graph, a bar chart on a whiteboard, a printed report) — never a screen, app UI, or floating graphic.
-- End with: "high detail, sharp focus, professional, 4k".
-
-FINAL CHECK before you answer — re-read your imagePrompt. If it mentions a robot, a hand, glowing data/code, a hologram, floating icons/UI, a screen interface, a brain, a circuit board, or the words abstract/digital/futuristic/cyber/tech, then it is WRONG: rewrite it around a single real, physical object. The image must look like a photograph of a real thing sitting in the real world, not like AI art.`
+${IMAGE_PROMPT_RULES}`
 
 function buildUserPrompt(args: {
   profile: ProfileContext
