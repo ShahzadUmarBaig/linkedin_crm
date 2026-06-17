@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 import { requireUser } from '@/lib/auth'
 import { markSlotPosted, rescheduleSlot, skipSlot, updateDraftBody } from '@/lib/calendar'
 import { regenerateDraft, regenerateImagePrompt } from '@/lib/drafts'
+import { linkDraftToScrapedPost, listUnlinkedOwnPosts, type UnlinkedPost } from '@/lib/attribution'
 
 export async function markSlotPostedAction(slotId: string): Promise<{ error?: string; ok?: true }> {
   const user = await requireUser()
@@ -55,6 +56,32 @@ export async function regenerateDraftAction(
     return { ok: true, ...r }
   } catch (err) {
     return { error: err instanceof Error ? err.message : 'regenerate failed' }
+  }
+}
+
+export async function listUnlinkedOwnPostsAction(): Promise<
+  { error: string } | { ok: true; posts: UnlinkedPost[] }
+> {
+  const user = await requireUser()
+  try {
+    return { ok: true, posts: await listUnlinkedOwnPosts(user.id) }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'failed' }
+  }
+}
+
+export async function linkPostedDraftAction(
+  draftId: string,
+  scrapedPostId: string,
+): Promise<{ error?: string; ok?: true }> {
+  const user = await requireUser()
+  try {
+    await linkDraftToScrapedPost(user.id, draftId, scrapedPostId)
+    revalidatePath('/compose')
+    revalidatePath('/analytics')
+    return { ok: true }
+  } catch (err) {
+    return { error: err instanceof Error ? err.message : 'failed' }
   }
 }
 

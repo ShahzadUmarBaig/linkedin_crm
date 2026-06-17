@@ -3,7 +3,7 @@
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { regenerateDraftAction, regenerateImagePromptAction, rescheduleSlotAction, updateDraftBodyAction } from '@/app/actions/calendar'
+import { linkPostedDraftAction, listUnlinkedOwnPostsAction, regenerateDraftAction, regenerateImagePromptAction, rescheduleSlotAction, updateDraftBodyAction } from '@/app/actions/calendar'
 import { generateImagesAction, selectImageAction } from '@/app/actions/images'
 import type { CalendarSlotView } from '@/lib/calendar'
 import { formatDate, formatDateTime, truncate } from '@/lib/format'
@@ -241,6 +241,8 @@ export function ComposeView({ view, drafts = [] }: { view: CalendarSlotView; dra
         </div>
       </div>
 
+      {view.status === 'posted' && view.draft_id && <PerformanceLink draftId={view.draft_id} />}
+
       {/* review + approve */}
       <div className="box pad-lg mt16">
         <div className="row between center" style={{ marginBottom: 14 }}>
@@ -339,4 +341,71 @@ function fromLocalInput(local: string): string | null {
   if (!local) return null
   const d = new Date(local)
   return isNaN(d.getTime()) ? null : d.toISOString()
+}
+
+// Manual fallback for outcome attribution: link this posted draft to the real LinkedIn post
+// (auto-match handles most cases on scrape; this covers the misses).
+function PerformanceLink({ draftId }: { draftId: string }) {
+  const [open, setOpen] = useState(false)
+  const [posts, setPosts] = useState<{ id: string; body: string | null; posted_at: string | null }[]>([])
+  const [sel, setSel] = useState('')
+  const [busy, start] = useTransition()
+  const [msg, setMsg] = useState<string | null>(null)
+
+  function load() {
+    setMsg(null)
+    setOpen(true)
+    start(async () => {
+      const r = await listUnlinkedOwnPostsAction()
+      if ('error' in r) return setMsg(r.error)
+      setPosts(r.posts)
+      setSel(r.posts[0]?.id ?? '')
+    })
+  }
+  function link() {
+    if (!sel) return
+    start(async () => {
+      const r = await linkPostedDraftAction(draftId, sel)
+      if (r.error) return setMsg(r.error)
+      setMsg('Linked. The engine will now learn from this post’s real performance.')
+      setOpen(false)
+    })
+  }
+
+  return (
+    <div className="box pad-lg mt16">
+      <div className="row between center">
+        <div className="h-sec">Performance tracking</div>
+        <span className="tag auto"><span className="dot" />learning loop</span>
+      </div>
+      <div className="note mt8">
+        After you scrape your own posts, the engine auto-links this one to its real LinkedIn
+        performance and learns from it. If auto-match missed it, link it manually here.
+      </div>
+      {!open ? (
+        <button className="btn ghost sm mt12" onClick={load} disabled={busy}>Link to a LinkedIn post</button>
+      ) : (
+        <div className="stack gap8 mt12">
+          {busy && posts.length === 0 ? (
+            <div className="note">Loading your posts…</div>
+          ) : posts.length === 0 ? (
+            <div className="note">No unlinked own posts found yet. Scrape your own posts first — extension → “Open my posts to scrape”.</div>
+          ) : (
+            <>
+              <select className="chess-select" value={sel} onChange={(e) => setSel(e.target.value)} style={{ width: '100%' }}>
+                {posts.map((p) => (
+                  <option key={p.id} value={p.id}>{(p.body ?? '(no text)').slice(0, 80)}</option>
+                ))}
+              </select>
+              <div className="row gap6">
+                <button className="btn primary sm" onClick={link} disabled={busy || !sel}>Link</button>
+                <button className="btn ghost sm" onClick={() => setOpen(false)} disabled={busy}>Cancel</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+      {msg && <div className="note mt8">{msg}</div>}
+    </div>
+  )
 }

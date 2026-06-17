@@ -11,6 +11,7 @@ import type {
   ScrapedPersonInput,
 } from '@crm/shared'
 import { createSupabaseServiceClient } from './supabase/server'
+import { attributePostedDrafts } from './attribution'
 
 export interface IngestResult {
   scrapeRunId: string
@@ -79,6 +80,14 @@ export async function ingestBatch(userId: string, batch: ScrapeBatch): Promise<I
       postIdByUrn,
       peopleIdByKey,
     )
+
+    // 5. Outcome attribution: auto-link posted drafts to the own-post they became, so the
+    // engine can learn from its own track record. Best-effort — never block ingest.
+    try {
+      await attributePostedDrafts(userId, supabase)
+    } catch (err) {
+      console.error('[ingest] draft attribution skipped (non-fatal):', err)
+    }
 
     const result: IngestResult = {
       scrapeRunId,
