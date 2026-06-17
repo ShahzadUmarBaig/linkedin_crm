@@ -1,12 +1,18 @@
 import { requireUser } from '@/lib/auth'
 import { getAnalytics } from '@/lib/analytics'
+import { getContentInsights } from '@/lib/content-insights'
 import { getPostingInsights } from '@/lib/insights'
 import { compactNumber, formatDate, truncate } from '@/lib/format'
 import { BestWindows } from './best-windows'
+import { WhatsWorking } from './whats-working'
 
 export default async function AnalyticsPage() {
   const user = await requireUser()
-  const [a, insights] = await Promise.all([getAnalytics(user.id), getPostingInsights(user.id)])
+  const [a, insights, content] = await Promise.all([
+    getAnalytics(user.id),
+    getPostingInsights(user.id),
+    getContentInsights(user.id),
+  ])
 
   if (!a.hasData) {
     return (
@@ -15,10 +21,12 @@ export default async function AnalyticsPage() {
           <span className="eyebrow">Synced from the extension</span>
           <div className="h-page mt8">What performed — and what it teaches the engine</div>
         </div>
+        {/* Works with zero own posts — learned from the inspiration feed. */}
+        <WhatsWorking insights={content} />
         <div className="box pad-lg" style={{ textAlign: 'center' }}>
           <div className="note" style={{ display: 'inline-block', textAlign: 'left' }}>
-            No metrics yet. Scrape your own LinkedIn posts with the extension — each scrape captures a
-            fresh impressions/reactions snapshot per post, and this screen fills in.
+            No metrics on your OWN posts yet. Scrape your own LinkedIn posts with the extension — each scrape
+            captures a fresh impressions/reactions snapshot per post, and your personal analytics fill in here.
           </div>
         </div>
       </>
@@ -33,6 +41,8 @@ export default async function AnalyticsPage() {
         <span className="eyebrow">Synced from the extension</span>
         <div className="h-page mt8">What performed — and what it teaches the engine</div>
       </div>
+
+      <WhatsWorking insights={content} />
 
       <BestWindows insights={insights} />
 
