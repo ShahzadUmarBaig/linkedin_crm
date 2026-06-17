@@ -63,7 +63,12 @@ function extractOnePost(el: HTMLElement, urn: string, ctx: ScanContext): PostCap
   const images = extractMediaUrls(el)
   const raw = { capturedAt: new Date().toISOString(), pageOwnerSlug: ctx.pageOwnerSlug, images }
 
-  const isOwn = ctx.selfSlug && ctx.pageOwnerSlug === ctx.selfSlug
+  // Ownership: slug match (case-insensitive) OR a per-post own-only signal. Impressions
+  // ("N impressions" / "View analytics") render ONLY on your own posts, so they're a reliable
+  // tell even when the configured slug is missing or formatted differently (hyphens etc.).
+  const norm = (s: string) => s.trim().toLowerCase()
+  const slugOwn = ctx.selfSlug != null && norm(ctx.pageOwnerSlug) === norm(ctx.selfSlug)
+  const isOwn = slugOwn || metrics.impressions != null
 
   if (isOwn) {
     const ownPost: ScrapedOwnPostInput = {

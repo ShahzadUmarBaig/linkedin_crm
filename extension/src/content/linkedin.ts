@@ -2,7 +2,7 @@
 // Passively observes the DOM. We never auto-scroll or auto-navigate.
 
 import type { ScrapedPersonInput } from '@crm/shared'
-import { getConfig, isExtensionAlive } from '../lib/storage'
+import { getConfig, isExtensionAlive, setConfig } from '../lib/storage'
 import {
   recordEngagement,
   recordInspirationPost,
@@ -175,6 +175,19 @@ async function captureProfileOnce(): Promise<void> {
   const key = person.profileUrl ?? canonicalProfileUrl(location.href) ?? location.href
   const merged = mergePerson(profileAccum[key], person)
   profileAccum[key] = merged
+
+  // Auto-learn your exact slug from a DOM-confirmed own profile, so own-post detection on
+  // activity pages and the popup deep-link always use the correct value (no manual typo risk).
+  if (isOwnProfilePage()) {
+    const slug = canonicalProfileUrl(location.href)?.match(/\/in\/([^/]+)/)?.[1] ?? null
+    if (slug && slug !== selfSlug) {
+      try {
+        await setConfig({ selfLinkedinSlug: slug })
+      } catch {
+        /* context invalidated */
+      }
+    }
+  }
 
   if (isSelf) {
     await recordSelfProfile(merged)

@@ -85,6 +85,19 @@ $<HTMLButtonElement>('clear').addEventListener('click', async () => {
   refreshStats()
 })
 
+// Open your own recent-activity page so the passive observer captures your posts (with
+// impressions). User-initiated navigation only — we never auto-navigate the user's browser.
+$<HTMLButtonElement>('myPosts').addEventListener('click', async () => {
+  const c = await getConfig()
+  const slug = c.selfLinkedinSlug?.trim()
+  if (!slug) {
+    setStatus('Open your own LinkedIn profile once first — the extension will learn your handle automatically.', 'err')
+    return
+  }
+  await chrome.tabs.create({ url: `https://www.linkedin.com/in/${slug}/recent-activity/all/` })
+  setStatus('Opened your posts. Scroll down to load them, then hit "Scrape now".', 'ok')
+})
+
 $<HTMLButtonElement>('copyDom').addEventListener('click', async () => {
   setStatus('Capturing DOM…', null)
   const res = await chrome.runtime.sendMessage({ type: 'capture-dom' })
