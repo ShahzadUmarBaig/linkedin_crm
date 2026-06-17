@@ -179,28 +179,26 @@ function extractPostedAt(el: HTMLElement): string | null {
 function extractMetrics(el: HTMLElement): { likes?: number; comments?: number; reposts?: number; impressions?: number } {
   const out: { likes?: number; comments?: number; reposts?: number; impressions?: number } = {}
 
-  // Likes/reactions — usually a button with aria-label "1,234 reactions" or text "1,234".
+  // Likes/reactions — class selector first, then any aria-label like "18 reactions"
+  // (recent-activity renders the count only in the aria-label, not as visible text).
   const reactionEl = el.querySelector(
     '[data-test-id="social-actions__reactions"], .social-details-social-counts__reactions, .social-details-social-counts__reactions-count',
   )
-  const reactionTxt = ariaOrText(reactionEl)
-  const likes = parseCount(reactionTxt)
+  const likes = parseCount(ariaOrText(reactionEl)) ?? ariaCount(el, /(\d[\d,]*)\s*reactions?/i)
   if (likes != null) out.likes = likes
 
-  // Comments
+  // Comments — class selector, then aria-label "2 comments on …'s post".
   const commentEl = el.querySelector(
     '[data-test-id="social-actions__comments"], .social-details-social-counts__comments, .social-details-social-counts__count-value',
   )
-  const commentTxt = ariaOrText(commentEl)
-  const comments = parseCount(commentTxt)
+  const comments = parseCount(ariaOrText(commentEl)) ?? ariaCount(el, /(\d[\d,]*)\s*comments?/i)
   if (comments != null) out.comments = comments
 
   // Reposts
   const repostEl = el.querySelector(
     '[data-test-id="social-actions__reposts"], .social-details-social-counts__reposts',
   )
-  const repostTxt = ariaOrText(repostEl)
-  const reposts = parseCount(repostTxt)
+  const reposts = parseCount(ariaOrText(repostEl)) ?? ariaCount(el, /(\d[\d,]*)\s*reposts?/i)
   if (reposts != null) out.reposts = reposts
 
   // Impressions (only visible on your own posts — LinkedIn shows "N impressions" near
@@ -228,9 +226,10 @@ function extractImpressions(el: HTMLElement): number | null {
     if (m) return parseInt(m[1].replace(/,/g, ''), 10)
   }
 
-  // (b) Analytics summary containers LinkedIn has used in the wild.
+  // (b) Analytics summary containers LinkedIn has used in the wild. `ca-entry-point__num-views`
+  // is the recent-activity "N impressions" span (no aria-label there, so this is the stable hook).
   const summary = el.querySelector(
-    '.feed-shared-update-v2__analytics-summary, .update-v2-social-activity, [data-test-id*="analytics"]',
+    '.ca-entry-point__num-views, .analytics-entry-point, .feed-shared-update-v2__analytics-summary, .update-v2-social-activity, [data-test-id*="analytics"]',
   )
   if (summary) {
     const m = (summary.textContent ?? '').match(re)
@@ -393,6 +392,16 @@ function ariaOrText(el: Element | null | undefined): string | null {
   const aria = el.getAttribute('aria-label')
   if (aria) return aria
   return text(el) || null
+}
+
+// Scan every aria-label in the post for the first one matching a "<N> <metric>" pattern
+// (e.g. "18 reactions", "2 comments on …"). Recent-activity surfaces counts only in aria.
+function ariaCount(root: HTMLElement, re: RegExp): number | null {
+  for (const node of root.querySelectorAll('[aria-label]')) {
+    const m = (node.getAttribute('aria-label') ?? '').match(re)
+    if (m) return parseInt(m[1].replace(/,/g, ''), 10)
+  }
+  return null
 }
 
 function canonicalize(href: string): string | null {

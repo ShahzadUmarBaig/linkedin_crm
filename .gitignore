@@ -13,3 +13,4 @@ build/
 coverage/
 .claude/settings.local.json
 .mcp.json
+docs/dom_copy/
