@@ -35,6 +35,7 @@ export interface TopPostExample {
 export interface ContentInsights {
   hasData: boolean
   sampleSize: number
+  ownSampleSize: number // how many of the analysed posts are YOUR own (weighted higher)
   topTopics: Ranked[]
   formats: Ranked[]
   hookStyles: Ranked[]
@@ -97,88 +98,132 @@ const HOOK_LABEL: Record<HookStyle, string> = {
 // cron/autopilot with no request cookies) can reuse this without an RLS context.
 export async function getContentInsights(userId: string, db?: DB): Promise<ContentInsights> {
   const supabase = db ?? (await createSupabaseServerClient())
-  const { data } = await supabase
+
+  // Inspiration corpus (others' posts) — the niche signal, weight 1.
+  const { data: inspData } = await supabase
     .from('inspiration_posts')
     .select('body, media, topics, likes, comments, reposts, author_person_id')
     .eq('user_id', userId)
     .order('first_seen_at', { ascending: false })
     .limit(800)
-
-  const rows = ((data ?? []) as InsRow[]).filter(
+  const inspRows = ((inspData ?? []) as InsRow[]).filter(
     (r) => r.likes != null || r.comments != null || r.reposts != null,
   )
 
-  if (rows.length < MIN_SAMPLE) {
-    return { hasData: false, sampleSize: rows.length, topTopics: [], formats: [], hookStyles: [], lengthBands: [], topPosts: [] }
+  // YOUR own posts (E2) — ground truth for your audience, weighted higher.
+  const ownRows = await loadOwnRows(supabase, userId)
+
+  // Each row carries a weight: own posts count for more so the profile reflects what works
+  // for YOUR followers, not just the niche at large.
+  const weighted: Array<{ r: InsRow; w: number }> = [
+    ...inspRows.map((r) => ({ r, w: 1 })),
+    ...ownRows.map((r) => ({ r, w: OWN_WEIGHT })),
+  ]
+
+  if (weighted.length < MIN_SAMPLE) {
+    return { hasData: false, sampleSize: weighted.length, ownSampleSize: ownRows.length, topTopics: [], formats: [], hookStyles: [], lengthBands: [], topPosts: [] }
   }
 
-  // Per-author baseline (median engagement of that author's captured posts).
+  // Per-author baseline (median engagement of that author's captured posts); own posts share
+  // the synthetic author key OWN, so they're normalised against your own typical post.
   const byAuthor = new Map<string, number[]>()
-  for (const r of rows) {
+  for (const { r } of weighted) {
     const k = r.author_person_id ?? '∅'
     if (!byAuthor.has(k)) byAuthor.set(k, [])
     byAuthor.get(k)!.push(engagementScore(r))
   }
-  const globalMedian = Math.max(1, median(rows.map(engagementScore)))
+  const globalMedian = Math.max(1, median(weighted.map(({ r }) => engagementScore(r))))
   const authorMedian = new Map<string, number>()
   for (const [k, vals] of byAuthor) authorMedian.set(k, vals.length >= 2 ? Math.max(1, median(vals)) : globalMedian)
 
   // relScore = how much a post beat its author's typical post (1.0 = typical).
-  const rel = rows.map((r) => {
+  const rel = weighted.map(({ r, w }) => {
     const base = authorMedian.get(r.author_person_id ?? '∅') ?? globalMedian
-    return { r, rel: engagementScore(r) / base }
+    return { r, rel: engagementScore(r) / base, w }
   })
-  const avgRel = rel.reduce((s, x) => s + x.rel, 0) / rel.length || 1
+  const totalW = rel.reduce((s, x) => s + x.w, 0) || 1
+  const avgRel = rel.reduce((s, x) => s + x.rel * x.w, 0) / totalW || 1
 
-  // Generic aggregator → Ranked[] sorted by multiplier (relative to corpus average).
-  function rank<T extends string>(
-    keyOf: (r: InsRow) => T | null,
-    labelOf: (k: T) => string,
-    minPosts = 3,
-  ): Ranked[] {
-    const groups = new Map<T, number[]>()
-    for (const { r, rel: v } of rel) {
+  // Weighted aggregator → Ranked[] sorted by multiplier (relative to corpus average).
+  function rankBy<T extends string>(keyOf: (r: InsRow) => T | null, labelOf: (k: T) => string, minPosts = 3): Ranked[] {
+    const groups = new Map<T, { sum: number; w: number; n: number }>()
+    for (const { r, rel: v, w } of rel) {
       const k = keyOf(r)
       if (k == null) continue
-      if (!groups.has(k)) groups.set(k, [])
-      groups.get(k)!.push(v)
+      const g = groups.get(k) ?? { sum: 0, w: 0, n: 0 }
+      g.sum += v * w
+      g.w += w
+      g.n += 1
+      groups.set(k, g)
     }
     const out: Ranked[] = []
-    for (const [k, vals] of groups) {
-      if (vals.length < minPosts) continue
-      const avg = vals.reduce((s, x) => s + x, 0) / vals.length
-      out.push({ key: k, label: labelOf(k), multiplier: avg / avgRel, posts: vals.length })
+    for (const [k, g] of groups) {
+      if (g.n < minPosts) continue
+      out.push({ key: k, label: labelOf(k), multiplier: g.sum / g.w / avgRel, posts: g.n })
     }
     return out.sort((a, b) => b.multiplier - a.multiplier)
   }
 
   const topTopics = (() => {
-    const groups = new Map<string, number[]>()
-    for (const { r, rel: v } of rel) for (const t of r.topics ?? []) {
+    const groups = new Map<string, { sum: number; w: number; n: number }>()
+    for (const { r, rel: v, w } of rel) for (const t of r.topics ?? []) {
       const k = t.trim()
       if (!k) continue
-      if (!groups.has(k)) groups.set(k, [])
-      groups.get(k)!.push(v)
+      const g = groups.get(k) ?? { sum: 0, w: 0, n: 0 }
+      g.sum += v * w
+      g.w += w
+      g.n += 1
+      groups.set(k, g)
     }
     const out: Ranked[] = []
-    for (const [k, vals] of groups) {
-      if (vals.length < 3) continue
-      const avg = vals.reduce((s, x) => s + x, 0) / vals.length
-      out.push({ key: k, label: k, multiplier: avg / avgRel, posts: vals.length })
+    for (const [k, g] of groups) {
+      if (g.n < 3) continue
+      out.push({ key: k, label: k, multiplier: g.sum / g.w / avgRel, posts: g.n })
     }
     return out.sort((a, b) => b.multiplier - a.multiplier).slice(0, 8)
   })()
 
-  const formats = rank<Format>((r) => (r.media as Format) ?? null, (k) => FORMAT_LABEL[k] ?? k, 3)
-  const hookStyles = rank<HookStyle>((r) => classifyHook(r.body), (k) => HOOK_LABEL[k], 3)
-  const lengthBands = rank((r) => lengthBand(r.body).key, (k) => ({ short: 'Short (<300 chars)', medium: 'Medium (300–900)', long: 'Long (900+ chars)' }[k] ?? k), 3)
+  const formats = rankBy<Format>((r) => (r.media as Format) ?? null, (k) => FORMAT_LABEL[k] ?? k, 3)
+  const hookStyles = rankBy<HookStyle>((r) => classifyHook(r.body), (k) => HOOK_LABEL[k], 3)
+  const lengthBands = rankBy((r) => lengthBand(r.body).key, (k) => ({ short: 'Short (<300 chars)', medium: 'Medium (300–900)', long: 'Long (900+ chars)' }[k] ?? k), 3)
 
   const topPosts = [...rel]
     .sort((a, b) => b.rel - a.rel)
     .slice(0, 5)
     .map(({ r }) => ({ body: r.body, likes: r.likes ?? 0, comments: r.comments ?? 0, reposts: r.reposts ?? 0, media: r.media }))
 
-  return { hasData: true, sampleSize: rows.length, topTopics, formats, hookStyles, lengthBands, topPosts }
+  return { hasData: true, sampleSize: weighted.length, ownSampleSize: ownRows.length, topTopics, formats, hookStyles, lengthBands, topPosts }
+}
+
+const OWN_WEIGHT = 3
+
+// Load the user's own posts as InsRow[], using the latest engagement snapshot per post.
+async function loadOwnRows(supabase: DB, userId: string): Promise<InsRow[]> {
+  const { data: posts } = await supabase
+    .from('scraped_posts')
+    .select('id, body, media, topics')
+    .eq('user_id', userId)
+    .limit(300)
+  const rows = (posts ?? []) as { id: string; body: string | null; media: string | null; topics: string[] | null }[]
+  if (rows.length === 0) return []
+
+  const { data: snaps } = await supabase
+    .from('post_metric_snapshots')
+    .select('post_id, likes, comments, reposts, captured_at')
+    .in('post_id', rows.map((r) => r.id))
+    .order('captured_at', { ascending: false })
+  const latest = new Map<string, { likes: number | null; comments: number | null; reposts: number | null }>()
+  for (const s of (snaps ?? []) as { post_id: string; likes: number | null; comments: number | null; reposts: number | null }[]) {
+    if (!latest.has(s.post_id)) latest.set(s.post_id, s)
+  }
+
+  const out: InsRow[] = []
+  for (const r of rows) {
+    const m = latest.get(r.id)
+    if (!m || (m.likes == null && m.comments == null && m.reposts == null)) continue
+    out.push({ body: r.body, media: r.media, topics: r.topics, likes: m.likes, comments: m.comments, reposts: m.reposts, author_person_id: 'OWN' })
+  }
+  return out
 }
 
 // Compact, prompt-ready summary of what's working — injected into idea & draft generation
@@ -199,5 +244,8 @@ export function performanceProfilePrompt(insights: ContentInsights): string | nu
   if (lengths.length) lines.push(`- Winning length: ${lengths.join(', ')}`)
   if (lines.length === 0) return null
 
-  return `WHAT PERFORMS IN THIS NICHE (learned from ${insights.sampleSize} captured feed posts; engagement normalised per author, so >1.0x means it beats the author's typical post). Lean toward these proven patterns where they genuinely fit the message — never force them or sacrifice the point:\n${lines.join('\n')}`
+  const src = insights.ownSampleSize > 0
+    ? `learned from ${insights.sampleSize} posts including ${insights.ownSampleSize} of YOUR OWN (your posts weighted higher)`
+    : `learned from ${insights.sampleSize} captured feed posts`
+  return `WHAT PERFORMS IN THIS NICHE (${src}; engagement normalised per author, so >1.0x means it beats the author's typical post). Lean toward these proven patterns where they genuinely fit the message — never force them or sacrifice the point:\n${lines.join('\n')}`
 }

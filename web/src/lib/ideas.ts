@@ -7,6 +7,7 @@ import { createSupabaseServerClient, createSupabaseServiceClient } from './supab
 import { generate } from './ai/client'
 import { getRecentRssForIdeas } from './rss'
 import { getContentInsights, performanceProfilePrompt } from './content-insights'
+import { getCreatorPlaybook } from './playbook'
 
 export const IDEA_QUEUE_TARGET = 5
 
@@ -173,8 +174,12 @@ export async function generateIdeas(
     getRecentRssForIdeas(userId, 12),
   ])
 
-  // 3b. What's actually performing in this niche → bias ideas toward proven patterns.
-  const performance = performanceProfilePrompt(await getContentInsights(userId, supabase))
+  // 3b. What's actually performing in this niche → bias ideas toward proven patterns,
+  // plus the evolving creator playbook (Stage E3).
+  const [performance, playbook] = await Promise.all([
+    getContentInsights(userId, supabase).then(performanceProfilePrompt),
+    getCreatorPlaybook(userId, supabase),
+  ])
 
   // 4. Build prompts + call AI
   const userPrompt = buildUserPrompt({
@@ -185,6 +190,7 @@ export async function generateIdeas(
     rssItems: rssItems ?? [],
     existingHooks: (existingIdeas ?? []).map((i: { hook: string | null }) => i.hook).filter((h): h is string => Boolean(h)),
     performance,
+    playbook,
     count: target,
   })
 
@@ -357,6 +363,7 @@ function buildUserPrompt(args: {
   rssItems: Array<{ title: string | null; summary: string | null }>
   existingHooks: string[]
   performance?: string | null
+  playbook?: string | null
   count: number
 }): string {
   const lines: string[] = []
@@ -370,6 +377,12 @@ function buildUserPrompt(args: {
   lines.push('')
   lines.push('PILLARS (assign each idea to exactly one of these by name):')
   for (const p of args.pillars) lines.push(`- "${p.name}": ${p.description}`)
+
+  if (args.playbook) {
+    lines.push('')
+    lines.push('YOUR CREATOR PLAYBOOK (learned from your results — follow these where they fit):')
+    lines.push(args.playbook)
+  }
 
   if (args.performance) {
     lines.push('')

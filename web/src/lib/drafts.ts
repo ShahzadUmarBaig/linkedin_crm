@@ -7,6 +7,7 @@ import { generate } from './ai/client'
 import { generatePostImages } from './images'
 import { pickOptimalSlot } from './insights'
 import { getContentInsights, performanceProfilePrompt } from './content-insights'
+import { getCreatorPlaybook } from './playbook'
 import type { IdeaRow } from './ideas'
 
 export interface ApproveIdeaResult {
@@ -51,7 +52,10 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
   if (!profile) throw new Error('Profile not set — visit /profile first.')
 
   // 4. AI call: produce body + scheduledFor + reasoning
-  const performance = performanceProfilePrompt(await getContentInsights(userId, supabase))
+  const [performance, playbook] = await Promise.all([
+    getContentInsights(userId, supabase).then(performanceProfilePrompt),
+    getCreatorPlaybook(userId, supabase),
+  ])
   const system = SYSTEM_PROMPT
   const user = buildUserPrompt({
     profile: profile as ProfileContext,
@@ -60,6 +64,7 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
     historyByHour,
     upcomingSlotIsos: upcomingSlots,
     performance,
+    playbook,
     now: new Date(),
   })
 
@@ -170,7 +175,10 @@ export async function regenerateDraft(
   ])
   if (!profile) throw new Error('Profile not set.')
 
-  const performance = performanceProfilePrompt(await getContentInsights(userId, supabase))
+  const [performance, playbook] = await Promise.all([
+    getContentInsights(userId, supabase).then(performanceProfilePrompt),
+    getCreatorPlaybook(userId, supabase),
+  ])
   const user = buildUserPrompt({
     profile: profile as ProfileContext,
     idea: idea as IdeaRow,
@@ -178,6 +186,7 @@ export async function regenerateDraft(
     historyByHour,
     upcomingSlotIsos: upcomingSlots,
     performance,
+    playbook,
     now: new Date(),
   })
 
@@ -444,6 +453,7 @@ function buildUserPrompt(args: {
   historyByHour: HistoryBucket[]
   upcomingSlotIsos: string[]
   performance?: string | null
+  playbook?: string | null
   now: Date
 }): string {
   const lines: string[] = []
@@ -458,6 +468,12 @@ function buildUserPrompt(args: {
   if (args.profile.pillars.length > 0) {
     lines.push('- Pillars:')
     for (const p of args.profile.pillars) lines.push(`  • "${p.name}": ${p.description}`)
+  }
+
+  if (args.playbook) {
+    lines.push('')
+    lines.push('YOUR CREATOR PLAYBOOK (learned from your own results — apply where it fits this idea):')
+    lines.push(args.playbook)
   }
 
   if (args.performance) {

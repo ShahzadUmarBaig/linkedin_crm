@@ -9,6 +9,7 @@ import { generateIdeas } from './ideas'
 import { refreshAllFeedsForUser } from './rss'
 import { backfillMissingImages } from './images'
 import { reoptimizeUpcomingSchedule } from './insights'
+import { refreshCreatorPlaybook } from './playbook'
 
 export interface AutopilotRunResult {
   userId: string
@@ -38,6 +39,14 @@ export async function runAutopilotForUser(userId: string): Promise<AutopilotRunR
     result.topicsProcessed = t.processed
   } catch (err) {
     console.error(`[autopilot] topics failed for ${userId}`, err)
+  }
+
+  // 2b. Reflection pass — rewrite the creator playbook from the latest results, so the ideas
+  // generated below use the freshest learning. Best-effort.
+  try {
+    await refreshCreatorPlaybook(userId, createSupabaseServiceClient())
+  } catch (err) {
+    console.error(`[autopilot] playbook refresh failed for ${userId}`, err)
   }
 
   // 2. Top up the idea queue to target.
