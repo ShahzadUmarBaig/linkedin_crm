@@ -6,6 +6,7 @@ import { createSupabaseServiceClient } from './supabase/server'
 import { generate } from './ai/client'
 import { generatePostImages } from './images'
 import { pickOptimalSlot } from './insights'
+import { getContentInsights, performanceProfilePrompt } from './content-insights'
 import type { IdeaRow } from './ideas'
 
 export interface ApproveIdeaResult {
@@ -50,6 +51,7 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
   if (!profile) throw new Error('Profile not set — visit /profile first.')
 
   // 4. AI call: produce body + scheduledFor + reasoning
+  const performance = performanceProfilePrompt(await getContentInsights(userId, supabase))
   const system = SYSTEM_PROMPT
   const user = buildUserPrompt({
     profile: profile as ProfileContext,
@@ -57,6 +59,7 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
     sourceBody,
     historyByHour,
     upcomingSlotIsos: upcomingSlots,
+    performance,
     now: new Date(),
   })
 
@@ -167,12 +170,14 @@ export async function regenerateDraft(
   ])
   if (!profile) throw new Error('Profile not set.')
 
+  const performance = performanceProfilePrompt(await getContentInsights(userId, supabase))
   const user = buildUserPrompt({
     profile: profile as ProfileContext,
     idea: idea as IdeaRow,
     sourceBody,
     historyByHour,
     upcomingSlotIsos: upcomingSlots,
+    performance,
     now: new Date(),
   })
 
@@ -416,6 +421,7 @@ Rules:
 - The body must NOT mention the source/inspiration post directly.
 - The body should sound like the user wrote it from scratch, not like an AI summary.
 - Avoid generic LinkedIn cliches ("excited to share", "I'm thrilled", "let me know your thoughts").
+- If a PERFORMANCE GUIDANCE block is present, prefer the hook style and post length it says win in this niche (e.g. open with a question, keep it short) — but ONLY when it fits the idea and never at the cost of the VOICE rules or the point.
 
 VOICE & READABILITY (this matters a lot):
 - Write in VERY SIMPLE English that someone who learned English as a second language can read easily. Target a 6th-8th grade reading level.
@@ -437,6 +443,7 @@ function buildUserPrompt(args: {
   sourceBody: string | null
   historyByHour: HistoryBucket[]
   upcomingSlotIsos: string[]
+  performance?: string | null
   now: Date
 }): string {
   const lines: string[] = []
@@ -451,6 +458,11 @@ function buildUserPrompt(args: {
   if (args.profile.pillars.length > 0) {
     lines.push('- Pillars:')
     for (const p of args.profile.pillars) lines.push(`  • "${p.name}": ${p.description}`)
+  }
+
+  if (args.performance) {
+    lines.push('')
+    lines.push(`PERFORMANCE GUIDANCE — ${args.performance}`)
   }
 
   lines.push('')

@@ -12,6 +12,8 @@
 
 import { createSupabaseServerClient } from './supabase/server'
 
+type DB = Awaited<ReturnType<typeof createSupabaseServerClient>>
+
 export type HookStyle = 'question' | 'stat' | 'story' | 'bold-claim' | 'list' | 'other'
 export type Format = 'text' | 'image' | 'video' | 'article' | 'poll' | 'document'
 
@@ -91,8 +93,10 @@ const HOOK_LABEL: Record<HookStyle, string> = {
   'bold-claim': 'Short bold claim', list: 'List / "N things"', other: 'Other',
 }
 
-export async function getContentInsights(userId: string): Promise<ContentInsights> {
-  const supabase = await createSupabaseServerClient()
+// Accepts an optional client so generation paths (which run under the service client, incl.
+// cron/autopilot with no request cookies) can reuse this without an RLS context.
+export async function getContentInsights(userId: string, db?: DB): Promise<ContentInsights> {
+  const supabase = db ?? (await createSupabaseServerClient())
   const { data } = await supabase
     .from('inspiration_posts')
     .select('body, media, topics, likes, comments, reposts, author_person_id')
@@ -175,4 +179,25 @@ export async function getContentInsights(userId: string): Promise<ContentInsight
     .map(({ r }) => ({ body: r.body, likes: r.likes ?? 0, comments: r.comments ?? 0, reposts: r.reposts ?? 0, media: r.media }))
 
   return { hasData: true, sampleSize: rows.length, topTopics, formats, hookStyles, lengthBands, topPosts }
+}
+
+// Compact, prompt-ready summary of what's working — injected into idea & draft generation
+// (learning-loop Stage C). Returns null when there isn't enough signal to be trustworthy.
+export function performanceProfilePrompt(insights: ContentInsights): string | null {
+  if (!insights.hasData) return null
+  const winners = (items: Ranked[], n: number) =>
+    items.filter((i) => i.multiplier >= 1.1).slice(0, n).map((i) => `${i.label} (${i.multiplier.toFixed(1)}x)`)
+
+  const topics = winners(insights.topTopics, 5)
+  const formats = winners(insights.formats, 2)
+  const hooks = winners(insights.hookStyles, 2)
+  const lengths = winners(insights.lengthBands, 1)
+  const lines: string[] = []
+  if (topics.length) lines.push(`- Winning topics: ${topics.join(', ')}`)
+  if (formats.length) lines.push(`- Winning formats: ${formats.join(', ')}`)
+  if (hooks.length) lines.push(`- Winning hooks: ${hooks.join(', ')}`)
+  if (lengths.length) lines.push(`- Winning length: ${lengths.join(', ')}`)
+  if (lines.length === 0) return null
+
+  return `WHAT PERFORMS IN THIS NICHE (learned from ${insights.sampleSize} captured feed posts; engagement normalised per author, so >1.0x means it beats the author's typical post). Lean toward these proven patterns where they genuinely fit the message — never force them or sacrifice the point:\n${lines.join('\n')}`
 }
