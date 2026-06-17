@@ -727,3 +727,15 @@ textarea.field { resize: vertical; line-height: 1.5; }
 .chess-move:hover { background: var(--panel); }
 .chess-move.active { background: var(--accent-soft); border-color: var(--accent-line); }
 .chess-move .dot { width: 7px; height: 7px; border-radius: 99px; flex: none; }
+
+/* ---------- dashboard stats ---------- */
+.g-kpi { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+@media (max-width: 820px) { .g-kpi { grid-template-columns: repeat(2, 1fr); } }
+.g-pipe-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+@media (max-width: 820px) { .g-pipe-stats { grid-template-columns: repeat(2, 1fr); } }
+.pipe-stat {
+  display: flex; flex-direction: column; gap: 2px; align-items: center;
+  padding: 12px 8px; border: 1px solid var(--line); border-radius: 9px; background: var(--panel-2);
+  text-decoration: none; color: var(--ink);
+}
+.pipe-stat:hover { border-color: var(--accent-line); }

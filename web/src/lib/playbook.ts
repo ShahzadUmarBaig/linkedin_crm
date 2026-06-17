@@ -12,9 +12,14 @@ import { getContentInsights, type ContentInsights } from './content-insights'
 type DB = ReturnType<typeof createSupabaseServiceClient>
 
 export async function getCreatorPlaybook(userId: string, supabase: DB): Promise<string | null> {
-  const { data } = await supabase.from('profile').select('playbook').eq('user_id', userId).maybeSingle()
-  const pb = (data as { playbook: string | null } | null)?.playbook
-  return pb && pb.trim() ? pb.trim() : null
+  // select('*') + try/catch so generation never breaks if migration 0012 isn't applied yet.
+  try {
+    const { data } = await supabase.from('profile').select('*').eq('user_id', userId).maybeSingle()
+    const pb = (data as { playbook?: string | null } | null)?.playbook
+    return pb && pb.trim() ? pb.trim() : null
+  } catch {
+    return null
+  }
 }
 
 const SYSTEM_PROMPT = `You are a sharp LinkedIn growth strategist writing a private "playbook" for ONE creator,
