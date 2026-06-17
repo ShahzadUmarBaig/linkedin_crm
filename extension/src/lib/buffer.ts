@@ -156,11 +156,17 @@ export function clearBuffer(): Promise<void> {
 export async function bufferStats() {
   await writeChain
   const buf = await readBuffer()
+  const inspirationPosts = Object.values(buf.inspirationPosts)
+  // Per-post engagement captured = inspiration posts that carry a like/comment/repost count.
+  const postsWithMetrics = inspirationPosts.filter(
+    (p) => p.likes != null || p.comments != null || p.reposts != null,
+  ).length
   return {
     ownPosts: Object.keys(buf.ownPosts).length,
-    inspirationPosts: Object.keys(buf.inspirationPosts).length,
+    inspirationPosts: inspirationPosts.length,
+    postsWithMetrics,
     people: Object.keys(buf.people).length,
-    engagements: buf.engagements.length,
+    engagements: buf.engagements.length, // people-level comment events (only on expanded threads)
     pages: buf.sourcePages.length,
   }
 }

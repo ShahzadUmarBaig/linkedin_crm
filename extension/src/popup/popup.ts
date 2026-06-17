@@ -21,8 +21,9 @@ async function refreshStats() {
     statsEl.innerHTML = `
       <div><span>Own posts</span><span>${s.ownPosts}</span></div>
       <div><span>Inspiration</span><span>${s.inspirationPosts}</span></div>
+      <div><span>Engagement tracked</span><span>${s.postsWithMetrics ?? 0}</span></div>
       <div><span>People</span><span>${s.people}</span></div>
-      <div><span>Engagements</span><span>${s.engagements}</span></div>
+      <div><span>Commenters</span><span>${s.engagements}</span></div>
       <div><span>Pages observed</span><span>${s.pages}</span></div>
     `
   } else {

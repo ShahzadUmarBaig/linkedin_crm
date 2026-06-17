@@ -61,10 +61,11 @@ export async function ingestBatch(userId: string, batch: ScrapeBatch): Promise<I
     const { postIdByUrn, ownPostsUpserted, metricSnapshotsInserted } =
       await upsertOwnPostsWithSnapshots(supabase, userId, scrapeRunId, batch.ownPosts)
 
-    // 3. Inspiration posts (resolve author to person_id where possible)
+    // 3. Inspiration posts (resolve author to person_id where possible) + engagement snapshots
     const inspirationPostsUpserted = await upsertInspirationPosts(
       supabase,
       userId,
+      scrapeRunId,
       batch.inspirationPosts,
       peopleIdByKey,
     )
@@ -272,33 +273,59 @@ function hasAnyMetric(m: ScrapedOwnPostInput['metrics']): boolean {
 async function upsertInspirationPosts(
   supabase: Supa,
   userId: string,
+  scrapeRunId: string,
   posts: ScrapedInspirationPostInput[],
   peopleIdByKey: Map<string, string>,
 ): Promise<number> {
-  const rows = posts
-    .filter((p) => p.linkedinUrn)
-    .map((p) => ({
-      user_id: userId,
-      linkedin_urn: p.linkedinUrn!,
-      url: p.url ?? null,
-      author_person_id: p.author?.profileUrl ? peopleIdByKey.get(p.author.profileUrl) ?? null : null,
-      body: p.body ?? null,
-      media: p.media ?? null,
-      posted_at: p.postedAt ?? null,
-      likes: p.likes ?? null,
-      comments: p.comments ?? null,
-      reposts: p.reposts ?? null,
-      raw: p.raw ?? null,
-    }))
+  const deduped = posts.filter((p) => p.linkedinUrn)
+  const rows = deduped.map((p) => ({
+    user_id: userId,
+    linkedin_urn: p.linkedinUrn!,
+    url: p.url ?? null,
+    author_person_id: p.author?.profileUrl ? peopleIdByKey.get(p.author.profileUrl) ?? null : null,
+    body: p.body ?? null,
+    media: p.media ?? null,
+    posted_at: p.postedAt ?? null,
+    likes: p.likes ?? null,
+    comments: p.comments ?? null,
+    reposts: p.reposts ?? null,
+    raw: p.raw ?? null,
+  }))
 
   if (rows.length === 0) return 0
 
   const { data, error } = await supabase
     .from('inspiration_posts')
     .upsert(rows, { onConflict: 'user_id,linkedin_urn' })
-    .select('id')
+    .select('id, linkedin_urn')
 
   if (error) throw new Error(`inspiration_posts upsert failed: ${error.message}`)
+
+  // Engagement history: record one snapshot per captured post that has any count, so we can
+  // track velocity over time (inspiration_posts itself only keeps the latest values).
+  // Best-effort: never let a snapshot failure (e.g. migration not yet applied) break ingest.
+  try {
+    const idByUrn = new Map<string, string>()
+    for (const r of (data ?? []) as { id: string; linkedin_urn: string }[]) idByUrn.set(r.linkedin_urn, r.id)
+    const snapshotRows = deduped
+      .filter((p) => p.likes != null || p.comments != null || p.reposts != null)
+      .map((p) => ({
+        user_id: userId,
+        inspiration_post_id: idByUrn.get(p.linkedinUrn!),
+        scrape_run_id: scrapeRunId,
+        likes: p.likes ?? null,
+        comments: p.comments ?? null,
+        reposts: p.reposts ?? null,
+      }))
+      .filter((r) => r.inspiration_post_id)
+    if (snapshotRows.length > 0) {
+      const { error: snapErr } = await supabase.from('inspiration_metric_snapshots').insert(snapshotRows)
+      if (snapErr) console.error('[ingest] inspiration snapshot insert skipped:', snapErr.message)
+    }
+  } catch (err) {
+    console.error('[ingest] inspiration snapshot insert threw (non-fatal):', err)
+  }
+
   return data?.length ?? 0
 }
 
