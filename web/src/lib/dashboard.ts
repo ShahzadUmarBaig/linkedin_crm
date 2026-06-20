@@ -7,6 +7,7 @@ import { listSlots, type CalendarSlotView } from './calendar'
 import { getAnalytics } from './analytics'
 import { getPostingInsights } from './insights'
 import { getContentInsights, type Ranked } from './content-insights'
+import { normalizePlaybook } from './playbook'
 
 export interface TrendItem {
   topic: string
@@ -76,7 +77,7 @@ export async function getTrends(userId: string, limit = 6): Promise<TrendItem[]>
 
 export interface DashboardStats {
   // growth & performance
-  postsPerDay: { label: string; count: number }[] // last 21 days, chronological
+  reachSeries: { label: string; impressions: number; engagement: number }[] // recent posts, chronological
   postedThisWeek: number
   postedPrevWeek: number
   totalImpressions: number
@@ -85,7 +86,7 @@ export interface DashboardStats {
   ownPostCount: number
   bestDay: string | null
   bestHour: number | null
-  topPosts: { body: string | null; likes: number; comments: number; reposts: number }[]
+  topPosts: { body: string | null; impressions: number; likes: number; comments: number; reposts: number }[]
   // coaching
   playbook: string | null
   playbookUpdatedAt: string | null
@@ -141,29 +142,37 @@ export async function getDashboardStats(userId: string): Promise<DashboardStats>
       supabase.from('settings').select('autopilot_enabled, last_autopilot_run_at').eq('user_id', userId).maybeSingle(),
     ])
 
-  // Posts-per-day over the last 21 days from posted slots.
+  // Week-over-week posting counts (from posted slots).
   const posted = (postedSlotsRes.data ?? []) as { posted_at: string | null }[]
-  const buckets = new Map<string, number>()
-  for (let i = 20; i >= 0; i--) {
-    const d = new Date(now - i * day)
-    buckets.set(dateKey(d), 0)
-  }
   let postedThisWeek = 0
   let postedPrevWeek = 0
   for (const p of posted) {
     if (!p.posted_at) continue
-    const k = dateKey(new Date(p.posted_at))
-    if (buckets.has(k)) buckets.set(k, (buckets.get(k) ?? 0) + 1)
     if (p.posted_at >= weekAgo) postedThisWeek++
     else if (p.posted_at >= prevWeekStart) postedPrevWeek++
   }
-  const postsPerDay = Array.from(buckets.entries()).map(([k, count]) => ({ label: k.slice(5), count }))
+
+  // Reach per recent post (chronological) — the actual "am I growing?" signal.
+  const eng = (p: { likes: number; comments: number; reposts: number }) => p.likes + p.comments + p.reposts
+  const reachSeries = [...analytics.recent]
+    .slice(0, 14)
+    .reverse()
+    .map((p) => ({
+      label: p.posted_at ? new Date(p.posted_at).toLocaleDateString(undefined, { month: 'numeric', day: 'numeric' }) : '',
+      impressions: p.impressions,
+      engagement: eng(p),
+    }))
+
+  // Top posts sorted by engagement (was previously recency order — the bug you spotted).
+  const topPosts = (analytics.recent.length
+    ? [...analytics.recent].sort((a, b) => eng(b) - eng(a)).slice(0, 5).map((p) => ({ body: p.body, impressions: p.impressions, likes: p.likes, comments: p.comments, reposts: p.reposts }))
+    : content.topPosts.slice(0, 5).map((p) => ({ body: p.body, impressions: 0, likes: p.likes, comments: p.comments, reposts: p.reposts })))
 
   const profile = profileRes.data as { niche: string | null; playbook?: string | null; playbook_updated_at?: string | null } | null
   const settings = settingsRes.data as { autopilot_enabled: boolean | null; last_autopilot_run_at: string | null } | null
 
   return {
-    postsPerDay,
+    reachSeries,
     postedThisWeek,
     postedPrevWeek,
     totalImpressions: analytics.totalImpressions,
@@ -172,10 +181,8 @@ export async function getDashboardStats(userId: string): Promise<DashboardStats>
     ownPostCount: analytics.postCount,
     bestDay: posting.bestDays[0]?.name ?? null,
     bestHour: posting.bestHours[0]?.hour ?? null,
-    topPosts: analytics.recent.length
-      ? analytics.recent.slice(0, 5).map((p) => ({ body: p.body, likes: p.likes, comments: p.comments, reposts: p.reposts }))
-      : content.topPosts.slice(0, 5).map((p) => ({ body: p.body, likes: p.likes, comments: p.comments, reposts: p.reposts })),
-    playbook: profile?.playbook?.trim() || null,
+    topPosts,
+    playbook: profile?.playbook ? normalizePlaybook(profile.playbook) || null : null,
     playbookUpdatedAt: profile?.playbook_updated_at ?? null, // undefined pre-migration → null
     topTopic: content.topTopics[0] ?? null,
     topFormat: content.formats[0] ?? null,
@@ -187,10 +194,6 @@ export async function getDashboardStats(userId: string): Promise<DashboardStats>
     autopilotEnabled: Boolean(settings?.autopilot_enabled),
     lastAutopilotRunAt: settings?.last_autopilot_run_at ?? null,
   }
-}
-
-function dateKey(d: Date): string {
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
 
 export async function getHomeData(userId: string): Promise<HomeData> {

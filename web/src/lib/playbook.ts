@@ -16,7 +16,8 @@ export async function getCreatorPlaybook(userId: string, supabase: DB): Promise<
   try {
     const { data } = await supabase.from('profile').select('*').eq('user_id', userId).maybeSingle()
     const pb = (data as { playbook?: string | null } | null)?.playbook
-    return pb && pb.trim() ? pb.trim() : null
+    if (!pb || !pb.trim()) return null
+    return normalizePlaybook(pb) || null
   } catch {
     return null
   }
@@ -30,7 +31,7 @@ Rules must be specific and evidence-based — reference the actual winning topic
 styles and lengths from the data. No generic advice ("be authentic", "post consistently").
 Each rule is one line, imperative, plain English. Include 1-2 "avoid" rules if the data supports them.
 
-Return ONLY the playbook as plain text bullet lines starting with "- ". No preamble, no headings.`
+Return ONLY plain text bullet lines, each starting with "- ". Do NOT return JSON, an object, an array, quotes, code fences, or any wrapper — just the bullet lines.`
 
 function buildContext(insights: ContentInsights): string {
   const fmt = (label: string, arr: { label: string; multiplier: number; posts: number }[]) =>
@@ -49,6 +50,35 @@ function buildContext(insights: ContentInsights): string {
   return lines.join('\n')
 }
 
+// Models sometimes return JSON ({"playbook":[...]}) or fenced text despite instructions.
+// Coerce anything into clean "- " bullet lines so the dashboard and prompt injection stay tidy.
+export function normalizePlaybook(raw: string): string {
+  let t = raw.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
+
+  // Try JSON first (object with .playbook array, or a bare array).
+  try {
+    const parsed = JSON.parse(t)
+    const arr: unknown = Array.isArray(parsed) ? parsed : (parsed as { playbook?: unknown })?.playbook
+    if (Array.isArray(arr)) {
+      return arr
+        .map((s) => '- ' + String(s).replace(/^[-•\s]+/, '').replace(/^"|"$/g, '').trim())
+        .filter((l) => l.length > 3)
+        .join('\n')
+    }
+  } catch {
+    /* not JSON — fall through to line cleanup */
+  }
+
+  // Plain text: keep bullet-ish lines, drop JSON scaffolding / wrappers.
+  return t
+    .split('\n')
+    .map((l) => l.trim())
+    .filter((l) => l && !/^[{}[\]]+,?$/.test(l) && !/^"?playbook"?\s*:/i.test(l))
+    .map((l) => '- ' + l.replace(/^[-•\s]*/, '').replace(/^"|",?$/g, '').trim())
+    .filter((l) => l.length > 3)
+    .join('\n')
+}
+
 /** Recompute the playbook from current evidence and store it on profile. No-op without signal. */
 export async function refreshCreatorPlaybook(userId: string, supabase: DB): Promise<{ updated: boolean; reason?: string }> {
   const insights = await getContentInsights(userId, supabase)
@@ -61,7 +91,7 @@ export async function refreshCreatorPlaybook(userId: string, supabase: DB): Prom
     user: `Evidence for this creator:\n\n${buildContext(insights)}\n\nWrite the playbook now.`,
     maxTokens: 700,
   })
-  const playbook = response.text.trim()
+  const playbook = normalizePlaybook(response.text)
   if (!playbook || playbook.length < 20) return { updated: false, reason: 'empty playbook' }
 
   const { error } = await supabase

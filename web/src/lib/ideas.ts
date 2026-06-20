@@ -149,7 +149,12 @@ export async function generateIdeas(
     return { generated: 0, skipped: true, reason: `Queue already has ${proposed} proposed ideas (target ${IDEA_QUEUE_TARGET}).` }
   }
 
-  // 3. Gather context: recent own posts + recent inspiration + recent newsletter items
+  // Only build ideas from FRESH material (last few days). Keeps ideas timely and stops the
+  // corpus growing unbounded over time (which would also breed duplicates).
+  const FRESH_DAYS = 4
+  const freshSince = new Date(Date.now() - FRESH_DAYS * 24 * 60 * 60 * 1000).toISOString()
+
+  // 3. Gather context: recent own posts + recent (fresh) inspiration + recent newsletter items
   const [{ data: ownPosts }, { data: inspirations }, { data: existingIdeas }, rssItems] = await Promise.all([
     supabase
       .from('scraped_posts')
@@ -163,15 +168,18 @@ export async function generateIdeas(
       .select('linkedin_urn, body, likes, comments, posted_at')
       .eq('user_id', userId)
       .not('body', 'is', null)
+      .gte('first_seen_at', freshSince)
       .order('first_seen_at', { ascending: false })
       .limit(15),
+    // ALL recent ideas across every status — so we never regenerate something the user
+    // already saw, especially ones they REJECTED (those leave the 'proposed' set).
     supabase
       .from('ideas')
       .select('hook')
       .eq('user_id', userId)
-      .eq('status', 'proposed')
-      .limit(20),
-    getRecentRssForIdeas(userId, 12),
+      .order('generated_at', { ascending: false })
+      .limit(200),
+    getRecentRssForIdeas(userId, 12, freshSince),
   ])
 
   // 3b. What's actually performing in this niche → bias ideas toward proven patterns,
@@ -421,7 +429,7 @@ function buildUserPrompt(args: {
 
   if (args.existingHooks.length > 0) {
     lines.push('')
-    lines.push('EXISTING HOOKS IN QUEUE — your new hooks MUST be different from all of these:')
+    lines.push('ALREADY-GENERATED OR REJECTED IDEAS — the user has already seen these. Do NOT repeat any of them, and do NOT lightly reword the same idea (same point with different words counts as a duplicate). Every new idea must be genuinely distinct in angle, not just phrasing:')
     for (const h of args.existingHooks) lines.push(`- ${h}`)
   }
 

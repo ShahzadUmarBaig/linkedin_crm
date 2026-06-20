@@ -189,14 +189,17 @@ export async function getRssData(userId: string): Promise<RssData> {
 export async function getRecentRssForIdeas(
   userId: string,
   limit = 12,
+  sinceIso?: string,
 ): Promise<Array<{ title: string | null; summary: string | null }>> {
   const supabase = createSupabaseServiceClient()
-  const { data } = await supabase
+  let q = supabase
     .from('rss_items')
     .select('title, summary')
     .eq('user_id', userId)
     .order('published_at', { ascending: false, nullsFirst: false })
     .limit(limit)
+  if (sinceIso) q = q.gte('published_at', sinceIso)
+  const { data } = await q
   return ((data ?? []) as { title: string | null; summary: string | null }[]).filter((r) => r.title || r.summary)
 }
 

@@ -82,25 +82,28 @@ export default async function HomePage() {
       <div className="g-main mb16" style={{ alignItems: 'start' }}>
         <div className="box pad-lg">
           <div className="row between center" style={{ marginBottom: 10 }}>
-            <div className="h-sec">Posts per day</div>
-            <span className="eyebrow">last 21 days · best {stats.bestDay ?? '—'} {hourLabel(stats.bestHour)}</span>
+            <div className="h-sec">Reach per post</div>
+            <span className="eyebrow">last {stats.reachSeries.length} posts · best {stats.bestDay ?? '—'} {hourLabel(stats.bestHour)}</span>
           </div>
-          <PostsChart data={stats.postsPerDay} />
+          <ReachChart data={stats.reachSeries} />
         </div>
 
         <div className="box pad-lg">
           <div className="h-sec" style={{ marginBottom: 8 }}>Your top posts</div>
+          <span className="eyebrow">ranked by engagement</span>
           {stats.topPosts.length === 0 ? (
-            <div className="note">No post performance yet. Scrape your own posts (extension → “Open my posts to scrape”) and they’ll rank here.</div>
+            <div className="note mt8">No post performance yet. Scrape your own posts (extension → “Open my posts to scrape”) and they’ll rank here.</div>
           ) : (
-            stats.topPosts.map((p, i) => (
-              <div className="perf-row" key={i} style={i === stats.topPosts.length - 1 ? { borderBottom: 'none' } : undefined}>
-                <b style={{ fontSize: 12.5, gridColumn: '1 / span 2' }}>{p.body ? truncate(p.body, 90) : '(no text)'}</b>
-                <span className="num">{p.likes}❤</span>
-                <span className="num">{p.comments}💬</span>
-                <span className="num">{p.reposts}🔁</span>
-              </div>
-            ))
+            <div className="mt8">
+              {stats.topPosts.map((p, i) => (
+                <div className="perf-row" key={i} style={i === stats.topPosts.length - 1 ? { borderBottom: 'none' } : undefined}>
+                  <b style={{ fontSize: 12.5, gridColumn: '1 / span 2' }}>{p.body ? truncate(p.body, 80) : '(no text)'}</b>
+                  <span className="num" title="impressions">{p.impressions ? compactNumber(p.impressions) : '—'}👁</span>
+                  <span className="num">{p.likes}❤</span>
+                  <span className="num">{p.comments + p.reposts}💬</span>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       </div>
@@ -250,23 +253,30 @@ function Kpi({ label, value, sub, good, bad }: { label: string; value: string; s
   )
 }
 
-function PostsChart({ data }: { data: DashboardStats['postsPerDay'] }) {
-  const max = Math.max(1, ...data.map((d) => d.count))
-  const total = data.reduce((s, d) => s + d.count, 0)
-  if (total === 0) {
-    return <div className="note">No posts published in the last 21 days. Mark posts as posted (or scrape your activity) and your cadence shows here.</div>
+function ReachChart({ data }: { data: DashboardStats['reachSeries'] }) {
+  const totalImp = data.reduce((s, d) => s + d.impressions, 0)
+  if (data.length === 0 || totalImp === 0) {
+    return <div className="note">No impression data yet. Scrape your own posts (extension → “Open my posts to scrape”, scroll so impressions load) and your reach-per-post shows here.</div>
   }
+  const max = Math.max(1, ...data.map((d) => d.impressions))
   return (
-    <div className="chart" style={{ alignItems: 'flex-end' }}>
-      {data.map((d, i) => (
-        <div
-          className="bar"
-          key={i}
-          style={{ height: `${Math.max(4, (d.count / max) * 100)}%` }}
-          title={`${d.label}: ${d.count} post${d.count === 1 ? '' : 's'}`}
-        />
-      ))}
-    </div>
+    <>
+      <div className="chart" style={{ alignItems: 'flex-end' }}>
+        {data.map((d, i) => (
+          <div
+            className="bar"
+            key={i}
+            style={{ height: `${Math.max(3, (d.impressions / max) * 100)}%` }}
+            title={`${d.label}: ${d.impressions.toLocaleString()} impressions · ${d.engagement} engagements`}
+          />
+        ))}
+      </div>
+      <div className="row between" style={{ marginTop: 6 }}>
+        <span className="eyebrow">{data[0]?.label}</span>
+        <span className="eyebrow">oldest → newest</span>
+        <span className="eyebrow">{data[data.length - 1]?.label}</span>
+      </div>
+    </>
   )
 }
 
