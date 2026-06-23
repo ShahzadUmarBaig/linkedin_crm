@@ -96,7 +96,9 @@ Rules:
 - Write hooks in VERY SIMPLE, everyday English (a non-native speaker should get them instantly). Short, plain words. No markdown, no asterisks, no fancy/literary phrasing.
 - Use the user's tone exactly. If they sound casual, your hooks sound casual; if professional, professional.
 - A hook is NOT a question unless the question is provocative or contrarian.
-- If you cite a source, the angle must be a contrarian, additive, or deeper take — never a copy.
+- NEVER clone a feed post. A feed/inspiration post is ONLY a signal of which TOPICS resonate right now — it is NOT a template. Do not reproduce a specific person's post, its claim, its structure, or its hook. If an idea would basically restate or lightly reword something someone you follow posted, DROP it entirely.
+- Every inspiration-sourced idea MUST take a clearly different stance than the post that sparked it: a contrarian counter-take, a different angle, the user's own first-hand experience, or a deeper/narrower cut. It must read as the user's original thought, never as a repost of someone else's.
+- Prefer ideas rooted in the user's OWN experience and past posts over riffs on others' posts. When in doubt, generate from the user's angle, not the feed's.
 - Output a single JSON array. No commentary.`
 
 type ParsedSourceType = 'inspiration_post' | 'own_post_pattern' | 'rss_item' | 'niche_research'
