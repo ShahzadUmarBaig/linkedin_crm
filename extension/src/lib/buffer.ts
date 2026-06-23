@@ -156,15 +156,39 @@ export function clearBuffer(): Promise<void> {
 export async function bufferStats() {
   await writeChain
   const buf = await readBuffer()
+  const ownPosts = Object.values(buf.ownPosts)
   const inspirationPosts = Object.values(buf.inspirationPosts)
-  // Per-post engagement captured = inspiration posts that carry a like/comment/repost count.
-  const postsWithMetrics = inspirationPosts.filter(
-    (p) => p.likes != null || p.comments != null || p.reposts != null,
-  ).length
+
+  // Aggregate every metric we captured this session, across own + inspiration posts.
+  let impressions = 0
+  let likes = 0
+  let comments = 0
+  let reposts = 0
+  let postsWithMetrics = 0
+
+  for (const p of ownPosts) {
+    const m = p.metrics ?? {}
+    if (m.impressions != null || m.likes != null || m.comments != null || m.reposts != null) postsWithMetrics++
+    impressions += m.impressions ?? 0
+    likes += m.likes ?? 0
+    comments += m.comments ?? 0
+    reposts += m.reposts ?? 0
+  }
+  for (const p of inspirationPosts) {
+    if (p.likes != null || p.comments != null || p.reposts != null) postsWithMetrics++
+    likes += p.likes ?? 0
+    comments += p.comments ?? 0
+    reposts += p.reposts ?? 0
+  }
+
   return {
-    ownPosts: Object.keys(buf.ownPosts).length,
+    ownPosts: ownPosts.length,
     inspirationPosts: inspirationPosts.length,
     postsWithMetrics,
+    impressions,
+    likes,
+    comments,
+    reposts,
     people: Object.keys(buf.people).length,
     engagements: buf.engagements.length, // people-level comment events (only on expanded threads)
     pages: buf.sourcePages.length,

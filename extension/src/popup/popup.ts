@@ -9,6 +9,8 @@ const ingestSecretInput = $<HTMLInputElement>('ingestSecret')
 const userIdInput = $<HTMLInputElement>('userId')
 const selfSlugInput = $<HTMLInputElement>('selfLinkedinSlug')
 
+const fmt = (n: number | undefined): string => (n ?? 0).toLocaleString()
+
 function setStatus(message: string, kind: 'ok' | 'err' | null) {
   statusEl.textContent = message
   statusEl.className = kind ? `status ${kind}` : ''
@@ -21,7 +23,11 @@ async function refreshStats() {
     statsEl.innerHTML = `
       <div><span>Own posts</span><span>${s.ownPosts}</span></div>
       <div><span>Inspiration</span><span>${s.inspirationPosts}</span></div>
-      <div><span>Engagement tracked</span><span>${s.postsWithMetrics ?? 0}</span></div>
+      <div><span>Posts w/ metrics</span><span>${s.postsWithMetrics ?? 0}</span></div>
+      <div><span>Impressions</span><span>${fmt(s.impressions)}</span></div>
+      <div><span>Likes</span><span>${fmt(s.likes)}</span></div>
+      <div><span>Comments</span><span>${fmt(s.comments)}</span></div>
+      <div><span>Reposts</span><span>${fmt(s.reposts)}</span></div>
       <div><span>People</span><span>${s.people}</span></div>
       <div><span>Commenters</span><span>${s.engagements}</span></div>
       <div><span>Pages observed</span><span>${s.pages}</span></div>
