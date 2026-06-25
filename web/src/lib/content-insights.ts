@@ -26,6 +26,7 @@ export interface Ranked {
 
 export interface TopPostExample {
   body: string | null
+  impressions: number
   likes: number
   comments: number
   reposts: number
@@ -50,14 +51,20 @@ interface InsRow {
   likes: number | null
   comments: number | null
   reposts: number | null
+  impressions: number | null // known for YOUR own posts; null for inspiration
   author_person_id: string | null
 }
 
 const MIN_SAMPLE = 8
 
 // Comments and reposts are stronger signals than a like, so weight them up.
+// When impressions are known (your own posts), use engagement RATE — a post seen by 5,000 with
+// 50 likes resonated far less than one seen by 500 with 50 likes. Per-author normalisation
+// downstream keeps rate-based (own) and count-based (inspiration) rows comparable.
 function engagementScore(r: InsRow): number {
-  return (r.likes ?? 0) + 3 * (r.comments ?? 0) + 4 * (r.reposts ?? 0)
+  const eng = (r.likes ?? 0) + 3 * (r.comments ?? 0) + 4 * (r.reposts ?? 0)
+  if (r.impressions != null && r.impressions > 0) return eng / r.impressions
+  return eng
 }
 
 function median(nums: number[]): number {
@@ -106,9 +113,9 @@ export async function getContentInsights(userId: string, db?: DB): Promise<Conte
     .eq('user_id', userId)
     .order('first_seen_at', { ascending: false })
     .limit(800)
-  const inspRows = ((inspData ?? []) as InsRow[]).filter(
-    (r) => r.likes != null || r.comments != null || r.reposts != null,
-  )
+  const inspRows = ((inspData ?? []) as Omit<InsRow, 'impressions'>[])
+    .map((r) => ({ ...r, impressions: null }))
+    .filter((r) => r.likes != null || r.comments != null || r.reposts != null)
 
   // YOUR own posts (E2) — ground truth for your audience, weighted higher.
   const ownRows = await loadOwnRows(supabase, userId)
@@ -190,7 +197,7 @@ export async function getContentInsights(userId: string, db?: DB): Promise<Conte
   const topPosts = [...rel]
     .sort((a, b) => b.rel - a.rel)
     .slice(0, 5)
-    .map(({ r }) => ({ body: r.body, likes: r.likes ?? 0, comments: r.comments ?? 0, reposts: r.reposts ?? 0, media: r.media }))
+    .map(({ r }) => ({ body: r.body, impressions: r.impressions ?? 0, likes: r.likes ?? 0, comments: r.comments ?? 0, reposts: r.reposts ?? 0, media: r.media }))
 
   return { hasData: true, sampleSize: weighted.length, ownSampleSize: ownRows.length, topTopics, formats, hookStyles, lengthBands, topPosts }
 }
@@ -209,11 +216,11 @@ async function loadOwnRows(supabase: DB, userId: string): Promise<InsRow[]> {
 
   const { data: snaps } = await supabase
     .from('post_metric_snapshots')
-    .select('post_id, likes, comments, reposts, captured_at')
+    .select('post_id, impressions, likes, comments, reposts, captured_at')
     .in('post_id', rows.map((r) => r.id))
     .order('captured_at', { ascending: false })
-  const latest = new Map<string, { likes: number | null; comments: number | null; reposts: number | null }>()
-  for (const s of (snaps ?? []) as { post_id: string; likes: number | null; comments: number | null; reposts: number | null }[]) {
+  const latest = new Map<string, { impressions: number | null; likes: number | null; comments: number | null; reposts: number | null }>()
+  for (const s of (snaps ?? []) as { post_id: string; impressions: number | null; likes: number | null; comments: number | null; reposts: number | null }[]) {
     if (!latest.has(s.post_id)) latest.set(s.post_id, s)
   }
 
@@ -221,7 +228,7 @@ async function loadOwnRows(supabase: DB, userId: string): Promise<InsRow[]> {
   for (const r of rows) {
     const m = latest.get(r.id)
     if (!m || (m.likes == null && m.comments == null && m.reposts == null)) continue
-    out.push({ body: r.body, media: r.media, topics: r.topics, likes: m.likes, comments: m.comments, reposts: m.reposts, author_person_id: 'OWN' })
+    out.push({ body: r.body, media: r.media, topics: r.topics, likes: m.likes, comments: m.comments, reposts: m.reposts, impressions: m.impressions, author_person_id: 'OWN' })
   }
   return out
 }

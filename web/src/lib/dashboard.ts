@@ -166,7 +166,7 @@ export async function getDashboardStats(userId: string): Promise<DashboardStats>
   // Top posts sorted by engagement (was previously recency order — the bug you spotted).
   const topPosts = (analytics.recent.length
     ? [...analytics.recent].sort((a, b) => eng(b) - eng(a)).slice(0, 5).map((p) => ({ body: p.body, impressions: p.impressions, likes: p.likes, comments: p.comments, reposts: p.reposts }))
-    : content.topPosts.slice(0, 5).map((p) => ({ body: p.body, impressions: 0, likes: p.likes, comments: p.comments, reposts: p.reposts })))
+    : content.topPosts.slice(0, 5).map((p) => ({ body: p.body, impressions: p.impressions, likes: p.likes, comments: p.comments, reposts: p.reposts })))
 
   const profile = profileRes.data as { niche: string | null; playbook?: string | null; playbook_updated_at?: string | null } | null
   const settings = settingsRes.data as { autopilot_enabled: boolean | null; last_autopilot_run_at: string | null } | null

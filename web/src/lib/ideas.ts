@@ -327,14 +327,16 @@ async function loadTopicPerformance(supabase: Supa, userId: string): Promise<Map
 
   const { data: snaps } = await supabase
     .from('post_metric_snapshots')
-    .select('post_id, likes, comments, reposts, captured_at')
+    .select('post_id, impressions, likes, comments, reposts, captured_at')
     .in('post_id', rows.map((p) => p.id))
     .order('captured_at', { ascending: false })
 
+  // Engagement RATE when impressions are known (truer "what resonated"), else raw counts.
   const engByPost = new Map<string, number>()
-  for (const s of (snaps ?? []) as { post_id: string; likes: number | null; comments: number | null; reposts: number | null }[]) {
+  for (const s of (snaps ?? []) as { post_id: string; impressions: number | null; likes: number | null; comments: number | null; reposts: number | null }[]) {
     if (engByPost.has(s.post_id)) continue
-    engByPost.set(s.post_id, (s.likes ?? 0) + (s.comments ?? 0) + (s.reposts ?? 0))
+    const eng = (s.likes ?? 0) + (s.comments ?? 0) + (s.reposts ?? 0)
+    engByPost.set(s.post_id, s.impressions != null && s.impressions > 0 ? eng / s.impressions : eng)
   }
   if (engByPost.size === 0) return new Map()
 

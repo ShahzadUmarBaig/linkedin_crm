@@ -7,7 +7,6 @@ import { createSupabaseServiceClient } from './supabase/server'
 import { extractTopicsForUser } from './topics'
 import { generateIdeas } from './ideas'
 import { refreshAllFeedsForUser } from './rss'
-import { backfillMissingImages } from './images'
 import { reoptimizeUpcomingSchedule } from './insights'
 import { refreshCreatorPlaybook } from './playbook'
 
@@ -58,12 +57,8 @@ export async function runAutopilotForUser(userId: string): Promise<AutopilotRunR
     result.error = err instanceof Error ? err.message : 'idea generation failed'
   }
 
-  // 3. Safety net: generate visuals for any approved drafts still missing them.
-  try {
-    result.imagesGenerated = await backfillMissingImages(userId)
-  } catch (err) {
-    console.error(`[autopilot] image backfill failed for ${userId}`, err)
-  }
+  // 3. Images are generated on demand in Compose (not auto-backfilled) — saves API spend on
+  // drafts the user never posts. result.imagesGenerated stays 0.
 
   // 4. Re-pack the upcoming queue into the latest best windows.
   try {

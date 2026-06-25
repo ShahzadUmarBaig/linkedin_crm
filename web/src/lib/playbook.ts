@@ -45,7 +45,10 @@ function buildContext(insights: ContentInsights): string {
   ].filter(Boolean)
   if (insights.topPosts.length) {
     lines.push('Top-performing post openings:')
-    for (const p of insights.topPosts) lines.push(`  • (${p.likes}❤ ${p.comments}💬 ${p.reposts}🔁) ${(p.body ?? '').slice(0, 160).replace(/\n/g, ' ')}`)
+    for (const p of insights.topPosts) {
+      const reach = p.impressions > 0 ? `${p.impressions} views, ` : ''
+      lines.push(`  • (${reach}${p.likes}❤ ${p.comments}💬 ${p.reposts}🔁) ${(p.body ?? '').slice(0, 160).replace(/\n/g, ' ')}`)
+    }
   }
   return lines.join('\n')
 }

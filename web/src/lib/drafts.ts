@@ -4,7 +4,6 @@
 
 import { createSupabaseServiceClient } from './supabase/server'
 import { generate } from './ai/client'
-import { generatePostImages } from './images'
 import { pickOptimalSlot } from './insights'
 import { getContentInsights, performanceProfilePrompt } from './content-insights'
 import { getCreatorPlaybook } from './playbook'
@@ -128,15 +127,8 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
     .eq('id', ideaId)
     .eq('user_id', userId)
 
-  // 8. Auto-generate the visual so the post is fully ready on review. Best-effort: never let an
-  // image failure (no Google key, transient API error) block the approval.
-  if (imagePrompt) {
-    try {
-      await generatePostImages(userId, draft.id, imagePrompt, 1)
-    } catch (err) {
-      console.error('[approve] image generation failed (draft still created)', err)
-    }
-  }
+  // 8. The image PROMPT is stored on the draft, but the image itself is NOT generated here —
+  // the user generates it on demand in Compose (saves API spend on drafts they never post).
 
   return {
     draftId: draft.id,
