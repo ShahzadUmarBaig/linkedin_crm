@@ -57,6 +57,20 @@ interface InsRow {
 
 const MIN_SAMPLE = 8
 
+// Guards against small-sample noise (a viral outlier or a topic with 3 posts reading as "287x"):
+const REL_CAP = 6 // no single post counts as more than 6x its author's typical
+const MIN_GROUP = 4 // min posts before a format/hook/length band is trusted
+const MIN_TOPIC = 5 // topics are noisier (many, sparse) → need a bit more
+const SHRINK_K = 6 // pull small-sample multipliers toward 1.0
+const MULT_CAP = 5 // final displayed multiplier ceiling
+
+// Shrink a raw multiplier toward 1.0 based on sample size, then clamp. With n=3 a "10x" becomes
+// modest; with n=30 it's barely touched. Makes the playbook trustworthy on thin data.
+function adjustMultiplier(raw: number, n: number): number {
+  const shrunk = 1 + (raw - 1) * (n / (n + SHRINK_K))
+  return Math.max(0.2, Math.min(MULT_CAP, shrunk))
+}
+
 // Comments and reposts are stronger signals than a like, so weight them up.
 // When impressions are known (your own posts), use engagement RATE — a post seen by 5,000 with
 // 50 likes resonated far less than one seen by 500 with 50 likes. Per-author normalisation
@@ -144,15 +158,16 @@ export async function getContentInsights(userId: string, db?: DB): Promise<Conte
   for (const [k, vals] of byAuthor) authorMedian.set(k, vals.length >= 2 ? Math.max(1, median(vals)) : globalMedian)
 
   // relScore = how much a post beat its author's typical post (1.0 = typical).
+  // Cap per-post influence: a single viral outlier must not read as "100x" and hijack a topic.
   const rel = weighted.map(({ r, w }) => {
     const base = authorMedian.get(r.author_person_id ?? '∅') ?? globalMedian
-    return { r, rel: engagementScore(r) / base, w }
+    return { r, rel: Math.min(REL_CAP, engagementScore(r) / base), w }
   })
   const totalW = rel.reduce((s, x) => s + x.w, 0) || 1
   const avgRel = rel.reduce((s, x) => s + x.rel * x.w, 0) / totalW || 1
 
   // Weighted aggregator → Ranked[] sorted by multiplier (relative to corpus average).
-  function rankBy<T extends string>(keyOf: (r: InsRow) => T | null, labelOf: (k: T) => string, minPosts = 3): Ranked[] {
+  function rankBy<T extends string>(keyOf: (r: InsRow) => T | null, labelOf: (k: T) => string, minPosts = MIN_GROUP): Ranked[] {
     const groups = new Map<T, { sum: number; w: number; n: number }>()
     for (const { r, rel: v, w } of rel) {
       const k = keyOf(r)
@@ -166,7 +181,7 @@ export async function getContentInsights(userId: string, db?: DB): Promise<Conte
     const out: Ranked[] = []
     for (const [k, g] of groups) {
       if (g.n < minPosts) continue
-      out.push({ key: k, label: labelOf(k), multiplier: g.sum / g.w / avgRel, posts: g.n })
+      out.push({ key: k, label: labelOf(k), multiplier: adjustMultiplier(g.sum / g.w / avgRel, g.n), posts: g.n })
     }
     return out.sort((a, b) => b.multiplier - a.multiplier)
   }
@@ -184,15 +199,15 @@ export async function getContentInsights(userId: string, db?: DB): Promise<Conte
     }
     const out: Ranked[] = []
     for (const [k, g] of groups) {
-      if (g.n < 3) continue
-      out.push({ key: k, label: k, multiplier: g.sum / g.w / avgRel, posts: g.n })
+      if (g.n < MIN_TOPIC) continue
+      out.push({ key: k, label: k, multiplier: adjustMultiplier(g.sum / g.w / avgRel, g.n), posts: g.n })
     }
     return out.sort((a, b) => b.multiplier - a.multiplier).slice(0, 8)
   })()
 
-  const formats = rankBy<Format>((r) => (r.media as Format) ?? null, (k) => FORMAT_LABEL[k] ?? k, 3)
-  const hookStyles = rankBy<HookStyle>((r) => classifyHook(r.body), (k) => HOOK_LABEL[k], 3)
-  const lengthBands = rankBy((r) => lengthBand(r.body).key, (k) => ({ short: 'Short (<300 chars)', medium: 'Medium (300–900)', long: 'Long (900+ chars)' }[k] ?? k), 3)
+  const formats = rankBy<Format>((r) => (r.media as Format) ?? null, (k) => FORMAT_LABEL[k] ?? k)
+  const hookStyles = rankBy<HookStyle>((r) => classifyHook(r.body), (k) => HOOK_LABEL[k])
+  const lengthBands = rankBy((r) => lengthBand(r.body).key, (k) => ({ short: 'Short (<300 chars)', medium: 'Medium (300–900)', long: 'Long (900+ chars)' }[k] ?? k))
 
   const topPosts = [...rel]
     .sort((a, b) => b.rel - a.rel)
