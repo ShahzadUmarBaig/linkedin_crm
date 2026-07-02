@@ -114,6 +114,49 @@ interface ParsedIdea {
   sourceScrapedUrn: string | null
 }
 
+// ---------- deterministic idea dedup ----------
+// The LLM ignores the "don't repeat" list often enough that we enforce uniqueness in code:
+// token-set similarity of (hook + angle) against existing ideas AND within the new batch.
+const STOP = new Set('the a an and or but to of for in on with your you our we is are be it this that how why what i my me as at from can will just not new'.split(' '))
+
+function ideaTokens(hook: string | null | undefined, angle?: string | null): Set<string> {
+  return new Set(
+    `${hook ?? ''} ${angle ?? ''}`
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !STOP.has(w)),
+  )
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  if (a.size === 0 || b.size === 0) return 0
+  let inter = 0
+  for (const w of a) if (b.has(w)) inter++
+  return inter / (a.size + b.size - inter)
+}
+
+const DUP_COMBINED = 0.42 // hook+angle overlap that means "same idea, reworded"
+const DUP_HOOK = 0.55 // near-identical hook
+
+function dropDuplicateIdeas(
+  fresh: ParsedIdea[],
+  existing: Array<{ hook: string | null; angle: string | null }>,
+): ParsedIdea[] {
+  const existingSigs = existing.map((e) => ({ combined: ideaTokens(e.hook, e.angle), hook: ideaTokens(e.hook) }))
+  const acceptedSigs: { combined: Set<string>; hook: Set<string> }[] = []
+  const out: ParsedIdea[] = []
+  for (const idea of fresh) {
+    const sig = { combined: ideaTokens(idea.hook, idea.angle), hook: ideaTokens(idea.hook) }
+    const isDup = (list: typeof existingSigs) =>
+      list.some((e) => jaccard(sig.combined, e.combined) >= DUP_COMBINED || jaccard(sig.hook, e.hook) >= DUP_HOOK)
+    if (isDup(existingSigs) || isDup(acceptedSigs)) continue
+    out.push(idea)
+    acceptedSigs.push(sig)
+  }
+  return out
+}
+
 export interface GenerateIdeasResult {
   generated: number
   skipped: boolean
@@ -173,14 +216,14 @@ export async function generateIdeas(
       .gte('first_seen_at', freshSince)
       .order('first_seen_at', { ascending: false })
       .limit(15),
-    // ALL recent ideas across every status — so we never regenerate something the user
-    // already saw, especially ones they REJECTED (those leave the 'proposed' set).
+    // ALL recent ideas across every status — for dedup (never regenerate something the user
+    // already saw, esp. REJECTED ones) and to feed rejections back as negative examples.
     supabase
       .from('ideas')
-      .select('hook')
+      .select('hook, angle, status')
       .eq('user_id', userId)
       .order('generated_at', { ascending: false })
-      .limit(200),
+      .limit(250),
     getRecentRssForIdeas(userId, 12, freshSince),
   ])
 
@@ -191,6 +234,10 @@ export async function generateIdeas(
     getCreatorPlaybook(userId, supabase),
   ])
 
+  const existingRows = (existingIdeas ?? []) as { hook: string | null; angle: string | null; status: string }[]
+  const existingHooks = existingRows.map((r) => r.hook).filter((h): h is string => Boolean(h))
+  const rejectedHooks = existingRows.filter((r) => r.status === 'rejected').map((r) => r.hook).filter((h): h is string => Boolean(h)).slice(0, 30)
+
   // 4. Build prompts + call AI
   const userPrompt = buildUserPrompt({
     profile: profile as { niche: string; audience: string | null; tone: string | null; pillars: Array<{ name: string; description: string }> },
@@ -198,7 +245,8 @@ export async function generateIdeas(
     ownPosts: ownPosts ?? [],
     inspirations: inspirations ?? [],
     rssItems: rssItems ?? [],
-    existingHooks: (existingIdeas ?? []).map((i: { hook: string | null }) => i.hook).filter((h): h is string => Boolean(h)),
+    existingHooks,
+    rejectedHooks,
     performance,
     playbook,
     count: target,
@@ -214,9 +262,16 @@ export async function generateIdeas(
   })
 
   // 5. Parse + validate
-  const parsed = parseIdeas(response.text, pillars.map((p) => p.name))
-  if (parsed.length === 0) {
+  const rawParsed = parseIdeas(response.text, pillars.map((p) => p.name))
+  if (rawParsed.length === 0) {
     return { generated: 0, skipped: false, reason: 'AI returned no parseable ideas.', costUsd: response.costUsd, model: response.model }
+  }
+
+  // 5b. Deterministic dedup — the prompt-level guard isn't enough; drop any idea too similar to
+  // an existing/rejected one, or to another idea in this same batch. Belt-and-suspenders.
+  const parsed = dropDuplicateIdeas(rawParsed, existingRows)
+  if (parsed.length === 0) {
+    return { generated: 0, skipped: true, reason: 'All generated ideas duplicated existing/rejected ones — will retry next run.', costUsd: response.costUsd, model: response.model }
   }
 
   // 6. Resolve source URNs to row IDs
@@ -374,6 +429,7 @@ function buildUserPrompt(args: {
   inspirations: Array<{ linkedin_urn: string; body: string | null; likes: number | null; comments: number | null }>
   rssItems: Array<{ title: string | null; summary: string | null }>
   existingHooks: string[]
+  rejectedHooks?: string[]
   performance?: string | null
   playbook?: string | null
   count: number
@@ -431,9 +487,15 @@ function buildUserPrompt(args: {
     }
   }
 
+  if (args.rejectedHooks && args.rejectedHooks.length > 0) {
+    lines.push('')
+    lines.push('THE USER ACTIVELY REJECTED THESE IDEAS — learn from it. Avoid this style, these angles, and anything close to them. Rejections are a strong signal of what they do NOT want:')
+    for (const h of args.rejectedHooks) lines.push(`- ${h}`)
+  }
+
   if (args.existingHooks.length > 0) {
     lines.push('')
-    lines.push('ALREADY-GENERATED OR REJECTED IDEAS — the user has already seen these. Do NOT repeat any of them, and do NOT lightly reword the same idea (same point with different words counts as a duplicate). Every new idea must be genuinely distinct in angle, not just phrasing:')
+    lines.push('ALREADY-GENERATED IDEAS — the user has already seen these. Do NOT repeat any of them, and do NOT lightly reword the same idea (same point with different words counts as a duplicate). Every new idea must be genuinely distinct in angle, not just phrasing:')
     for (const h of args.existingHooks) lines.push(`- ${h}`)
   }
 
