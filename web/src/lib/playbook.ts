@@ -58,27 +58,32 @@ function buildContext(insights: ContentInsights): string {
 export function normalizePlaybook(raw: string): string {
   let t = raw.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
 
-  // Try JSON first (object with .playbook array, or a bare array).
+  // Try JSON first: a bare array, or an object under ANY key (playbook/rules/items/…).
   try {
-    const parsed = JSON.parse(t)
-    const arr: unknown = Array.isArray(parsed) ? parsed : (parsed as { playbook?: unknown })?.playbook
+    const parsed: unknown = JSON.parse(t)
+    const arr = Array.isArray(parsed)
+      ? parsed
+      : parsed && typeof parsed === 'object'
+        ? Object.values(parsed as Record<string, unknown>).find((v) => Array.isArray(v))
+        : null
     if (Array.isArray(arr)) {
-      return arr
+      const lines = arr
         .map((s) => '- ' + String(s).replace(/^[-•\s]+/, '').replace(/^"|"$/g, '').trim())
         .filter((l) => l.length > 3)
-        .join('\n')
+      if (lines.length) return lines.join('\n')
     }
   } catch {
-    /* not JSON — fall through to line cleanup */
+    /* not valid JSON — fall through to line cleanup */
   }
 
-  // Plain text: keep bullet-ish lines, drop JSON scaffolding / wrappers.
+  // Plain text / partial-JSON leak: keep real bullet lines, drop any JSON scaffolding —
+  // braces/brackets/commas alone, or a lone `"anyKey": [` / `"anyKey":` opener line.
   return t
     .split('\n')
     .map((l) => l.trim())
-    .filter((l) => l && !/^[{}[\]]+,?$/.test(l) && !/^"?playbook"?\s*:/i.test(l))
-    .map((l) => '- ' + l.replace(/^[-•\s]*/, '').replace(/^"|",?$/g, '').trim())
-    .filter((l) => l.length > 3)
+    .filter((l) => l && !/^[{}[\],]+$/.test(l) && !/^"?[\w ]+"?\s*:\s*\[?\s*$/.test(l))
+    .map((l) => '- ' + l.replace(/^[-•\s]*/, '').replace(/^"|",?$|"$/g, '').trim())
+    .filter((l) => l.replace(/^-\s*/, '').length > 3)
     .join('\n')
 }
 
