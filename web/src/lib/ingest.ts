@@ -13,6 +13,17 @@ import type {
 import { createSupabaseServiceClient } from './supabase/server'
 import { attributePostedDrafts } from './attribution'
 
+// Guard every scraped count before it hits a Postgres int column. A parse slip (e.g. a
+// LinkedIn URN/id read as a like count) can produce absurd values that overflow int and 500
+// the whole ingest — reject anything implausible instead of letting one bad post block a scrape.
+const MAX_PLAUSIBLE_COUNT = 100_000_000
+function safeInt(v: number | null | undefined): number | null {
+  if (v == null || !Number.isFinite(v)) return null
+  const n = Math.trunc(v)
+  if (n < 0 || n > MAX_PLAUSIBLE_COUNT) return null
+  return n
+}
+
 export interface IngestResult {
   scrapeRunId: string
   counts: {
@@ -256,10 +267,10 @@ async function upsertOwnPostsWithSnapshots(
     .map((p) => ({
       post_id: postIdByUrn.get(p.linkedinUrn)!,
       scrape_run_id: scrapeRunId,
-      impressions: p.metrics?.impressions ?? null,
-      likes: p.metrics?.likes ?? null,
-      comments: p.metrics?.comments ?? null,
-      reposts: p.metrics?.reposts ?? null,
+      impressions: safeInt(p.metrics?.impressions),
+      likes: safeInt(p.metrics?.likes),
+      comments: safeInt(p.metrics?.comments),
+      reposts: safeInt(p.metrics?.reposts),
     }))
 
   if (snapshotRows.length > 0) {
@@ -295,9 +306,9 @@ async function upsertInspirationPosts(
     body: p.body ?? null,
     media: p.media ?? null,
     posted_at: p.postedAt ?? null,
-    likes: p.likes ?? null,
-    comments: p.comments ?? null,
-    reposts: p.reposts ?? null,
+    likes: safeInt(p.likes),
+    comments: safeInt(p.comments),
+    reposts: safeInt(p.reposts),
     raw: p.raw ?? null,
   }))
 
@@ -322,9 +333,9 @@ async function upsertInspirationPosts(
         user_id: userId,
         inspiration_post_id: idByUrn.get(p.linkedinUrn!),
         scrape_run_id: scrapeRunId,
-        likes: p.likes ?? null,
-        comments: p.comments ?? null,
-        reposts: p.reposts ?? null,
+        likes: safeInt(p.likes),
+        comments: safeInt(p.comments),
+        reposts: safeInt(p.reposts),
       }))
       .filter((r) => r.inspiration_post_id)
     if (snapshotRows.length > 0) {

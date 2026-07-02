@@ -148,8 +148,14 @@ export function parseRelativeTime(raw: string, now: Date = new Date()): string |
 }
 
 // Extract a leading integer from text like "1,234 reactions" → 1234, "56 comments" → 56.
+// Real LinkedIn reaction/comment counts never approach this — anything above is a parse
+// slip (e.g. a post URN/id read as a count), so reject it rather than store garbage.
+export const MAX_PLAUSIBLE_COUNT = 100_000_000
+
 export function parseCount(s: string | null | undefined): number | null {
   if (!s) return null
   const m = s.replace(/,/g, '').match(/(\d+)/)
-  return m ? parseInt(m[1], 10) : null
+  if (!m) return null
+  const n = parseInt(m[1], 10)
+  return Number.isFinite(n) && n >= 0 && n <= MAX_PLAUSIBLE_COUNT ? n : null
 }

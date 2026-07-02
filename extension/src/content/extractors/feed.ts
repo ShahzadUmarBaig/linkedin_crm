@@ -11,7 +11,7 @@
 // Posts here have no URN we can read, so we synthesize a stable dedup key from author + body.
 
 import type { ScrapedInspirationPostInput, ScrapedMediaType, ScrapedPersonInput } from '@crm/shared'
-import { canonicalProfileUrl, expandTruncatedText, parseRelativeTime, text } from '../util'
+import { canonicalProfileUrl, expandTruncatedText, MAX_PLAUSIBLE_COUNT, parseRelativeTime, text } from '../util'
 
 export interface FeedCapture {
   inspirationPost: ScrapedInspirationPostInput
@@ -137,18 +137,24 @@ function extractCounts(textBlob: string): { reactions: number | null; comments: 
   const norm = textBlob.replace(/,/g, '')
   let reactions: number | null = null
   const others = norm.match(/and\s*(\d+)\s*others?/i)
-  if (others) reactions = parseInt(others[1], 10) + 1
+  if (others) reactions = cap(parseInt(others[1], 10) + 1)
   else {
     const r = norm.match(/(\d+)\s*reactions?\b/i)
-    if (r) reactions = parseInt(r[1], 10)
+    if (r) reactions = cap(parseInt(r[1], 10))
   }
   const c = norm.match(/(\d+)\s*comments?\b/i)
   const rp = norm.match(/(\d+)\s*reposts?\b/i)
   return {
     reactions,
-    comments: c ? parseInt(c[1], 10) : null,
-    reposts: rp ? parseInt(rp[1], 10) : null,
+    comments: c ? cap(parseInt(c[1], 10)) : null,
+    reposts: rp ? cap(parseInt(rp[1], 10)) : null,
   }
+}
+
+// Reject implausible counts — a big digit run in the post text sitting next to
+// "reactions/others" would otherwise overflow the DB int column and 500 the ingest.
+function cap(n: number): number | null {
+  return Number.isFinite(n) && n >= 0 && n <= MAX_PLAUSIBLE_COUNT ? n : null
 }
 
 function extractFeedImages(el: HTMLElement): string[] {
