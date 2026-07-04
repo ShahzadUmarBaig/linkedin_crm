@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
-import { approveIdeaAction, discardAllIdeasAction, rejectIdeaAction, triggerGenerateIdeas, updateIdeaAction } from '@/app/actions/ideas'
+import { approveIdeaAction, discardAllIdeasAction, regenerateIdeaAction, rejectIdeaAction, triggerGenerateIdeas, updateIdeaAction } from '@/app/actions/ideas'
 import type { IdeaRow } from '@/lib/ideas'
 import type { TrendItem } from '@/lib/dashboard'
 import { scoreTone, sourceLabel } from '@/lib/format'
@@ -213,6 +213,9 @@ function HeroCard({
   const [pillar, setPillar] = useState(idea.pillar ?? '')
   const [saving, startSave] = useTransition()
   const [err, setErr] = useState<string | null>(null)
+  const [refineOpen, setRefineOpen] = useState(false)
+  const [instr, setInstr] = useState('')
+  const [refining, startRefine] = useTransition()
   const score = idea.score ?? 0
 
   function save() {
@@ -221,6 +224,17 @@ function HeroCard({
       const r = await updateIdeaAction(idea.id, { hook, angle, pillar })
       if (r.error) return setErr(r.error)
       setEditing(false)
+      onSaved()
+    })
+  }
+
+  function refine() {
+    setErr(null)
+    startRefine(async () => {
+      const r = await regenerateIdeaAction(idea.id, instr)
+      if ('error' in r) return setErr(r.error)
+      setRefineOpen(false)
+      setInstr('')
       onSaved()
     })
   }
@@ -272,8 +286,27 @@ function HeroCard({
       </button>
       <div className="row gap8 mt12">
         <button className="btn ghost grow" onClick={() => setEditing(true)}>Edit</button>
+        <button className="btn ghost grow" onClick={() => setRefineOpen((v) => !v)} disabled={busy}>Refine</button>
         <button className="btn ghost grow" onClick={() => onReject(idea.id)} disabled={busy}>Reject</button>
       </div>
+      {refineOpen && (
+        <div className="stack gap8 mt12">
+          <textarea
+            className="field"
+            rows={2}
+            value={instr}
+            onChange={(e) => setInstr(e.target.value)}
+            placeholder="Tell the AI how to change this idea — e.g. 'make it third person', 'less generic', 'focus on the cost angle'…"
+          />
+          <div className="row gap8">
+            <button className="btn primary sm" onClick={refine} disabled={refining || !instr.trim()}>
+              {refining ? 'Regenerating…' : 'Regenerate idea'}
+            </button>
+            <button className="btn ghost sm" onClick={() => setRefineOpen(false)} disabled={refining}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {err && <p className="banner err mt12">{err}</p>}
       <div className="note mt12">Score blends hook quality, trend match, and your past performance on these topics.</div>
     </div>
   )

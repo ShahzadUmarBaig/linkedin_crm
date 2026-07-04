@@ -99,6 +99,7 @@ Rules:
 - NEVER clone a feed post. A feed/inspiration post is ONLY a signal of which TOPICS resonate right now — it is NOT a template. Do not reproduce a specific person's post, its claim, its structure, or its hook. If an idea would basically restate or lightly reword something someone you follow posted, DROP it entirely.
 - Every inspiration-sourced idea MUST take a clearly different stance than the post that sparked it: a contrarian counter-take, a different angle, the user's own first-hand experience, or a deeper/narrower cut. It must read as the user's original thought, never as a repost of someone else's.
 - Prefer ideas rooted in the user's OWN experience and past posts over riffs on others' posts. When in doubt, generate from the user's angle, not the feed's.
+- ATTRIBUTION: for source_type inspiration_post or rss_item, the idea is COMMENTARY on someone else's post/tool/news. The 'angle' must NEVER imply the user built, made, discovered, launched, or owns the thing. Phrase it as the user reacting to / analysing / sharing external work (e.g. "react to a new tool that…", "give a take on why X matters"), never "I built X". Only own_post_pattern ideas may be about something the user personally did.
 - Output a single JSON array. No commentary.`
 
 type ParsedSourceType = 'inspiration_post' | 'own_post_pattern' | 'rss_item' | 'niche_research'
@@ -112,6 +113,79 @@ interface ParsedIdea {
   sourceType: ParsedSourceType
   sourceInspirationUrn: string | null
   sourceScrapedUrn: string | null
+}
+
+// ---------- regenerate ONE idea with the user's instructions ----------
+const SINGLE_IDEA_SYSTEM = `You rewrite ONE LinkedIn post idea to follow the user's instructions.
+Return ONLY a JSON object (no prose, no markdown fences):
+{"hook": "punchy first line, <=120 chars, very simple everyday English", "angle": "one sentence on the unique take", "pillar": "exactly one of the given pillars, by name", "topics": ["1-3 Title-Case tags"]}
+Rules:
+- Follow the user's INSTRUCTIONS above everything else.
+- ATTRIBUTION: if the idea is commentary on external work (someone else's post/tool/news), never phrase it as if the user built, made, or owns it — frame it as reacting to / sharing external work. Only claim personal work when the source is the user's own.
+- Keep it grounded, specific and non-generic. No hashtags, no markdown.`
+
+export async function regenerateSingleIdea(
+  userId: string,
+  ideaId: string,
+  instructions: string,
+): Promise<{ hook: string; angle: string; pillar: string }> {
+  const supabase = createSupabaseServiceClient()
+  const { data: idea } = await supabase.from('ideas').select('*').eq('id', ideaId).eq('user_id', userId).maybeSingle()
+  if (!idea) throw new Error('Idea not found.')
+  const { data: profile } = await supabase.from('profile').select('niche, audience, tone, pillars').eq('user_id', userId).maybeSingle()
+  const pillars = ((profile?.pillars ?? []) as Array<{ name: string; description: string }>).filter((p) => p.name)
+  const pillarNames = pillars.map((p) => p.name)
+
+  const user = [
+    profile?.niche ? `NICHE: ${profile.niche}` : '',
+    profile?.tone ? `TONE: ${profile.tone}` : '',
+    `PILLARS (pick exactly one): ${pillarNames.join(', ')}`,
+    '',
+    'CURRENT IDEA:',
+    `- hook: ${idea.hook ?? ''}`,
+    `- angle: ${idea.angle ?? ''}`,
+    `- pillar: ${idea.pillar ?? ''}`,
+    `- source_type: ${idea.source_type ?? 'unknown'}`,
+    '',
+    `USER INSTRUCTIONS FOR THE REWRITE: ${instructions.trim()}`,
+    '',
+    'Return the improved idea as the single JSON object described in the system prompt.',
+  ].filter(Boolean).join('\n')
+
+  const resp = await generate({ userId, task: 'idea_generation', system: SINGLE_IDEA_SYSTEM, user, maxTokens: 700 })
+  const parsed = parseSingleIdea(resp.text, pillarNames, idea.pillar ?? pillarNames[0] ?? '')
+  if (!parsed) throw new Error('Could not regenerate the idea. Try again.')
+
+  const { error } = await supabase
+    .from('ideas')
+    .update({ hook: parsed.hook, angle: parsed.angle, pillar: parsed.pillar, topics: parsed.topics })
+    .eq('id', ideaId)
+    .eq('user_id', userId)
+  if (error) throw new Error(`idea update: ${error.message}`)
+  return { hook: parsed.hook, angle: parsed.angle, pillar: parsed.pillar }
+}
+
+function parseSingleIdea(
+  text: string,
+  validPillars: string[],
+  fallbackPillar: string,
+): { hook: string; angle: string; pillar: string; topics: string[] } | null {
+  let t = text.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim()
+  const f = t.indexOf('{')
+  const l = t.lastIndexOf('}')
+  if (f !== -1 && l > f) t = t.slice(f, l + 1)
+  try {
+    const o = JSON.parse(t) as Record<string, unknown>
+    const hook = String(o.hook ?? '').trim()
+    const angle = String(o.angle ?? '').trim()
+    if (!hook || !angle) return null
+    let pillar = String(o.pillar ?? '').trim()
+    if (!validPillars.some((p) => p.toLowerCase() === pillar.toLowerCase())) pillar = fallbackPillar
+    const topics = Array.isArray(o.topics) ? o.topics.map((x) => String(x).trim()).filter(Boolean).slice(0, 3) : []
+    return { hook, angle, pillar, topics }
+  } catch {
+    return null
+  }
 }
 
 // ---------- deterministic idea dedup ----------

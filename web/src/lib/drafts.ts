@@ -60,6 +60,7 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
     profile: profile as ProfileContext,
     idea: idea as IdeaRow,
     sourceBody,
+    sourceType: (idea as IdeaRow).source_type,
     historyByHour,
     upcomingSlotIsos: upcomingSlots,
     performance,
@@ -175,6 +176,7 @@ export async function regenerateDraft(
     profile: profile as ProfileContext,
     idea: idea as IdeaRow,
     sourceBody,
+    sourceType: (idea as IdeaRow).source_type,
     historyByHour,
     upcomingSlotIsos: upcomingSlots,
     performance,
@@ -424,6 +426,13 @@ Rules:
 - Avoid generic LinkedIn cliches ("excited to share", "I'm thrilled", "let me know your thoughts").
 - If a PERFORMANCE GUIDANCE block is present, prefer the hook style and post length it says win in this niche (e.g. open with a question, keep it short) — but ONLY when it fits the idea and never at the cost of the VOICE rules or the point.
 
+VOICE & ATTRIBUTION (critical — never claim someone else's work as your own):
+- First-person ownership words ("I built", "I made", "I created", "I launched", "I shipped", "my project", "I developed") are ONLY for the user's OWN work and lived experience.
+- If the idea was sparked by someone else's post, a newsletter, a tool, a company, a library, or external news (the user prompt states the SOURCE TYPE), the user is COMMENTING on it — NOT claiming it. NEVER write as if the user built, made, discovered, or owns that thing. Use external framing: "I came across a tool called X", "There's a new project, X, that…", "A team just shipped X", "I read about X…", "Someone built X to…". Name the external thing (tool/library/company) correctly, as someone else's work.
+- WORKED EXAMPLE — a newsletter mentions a library "json_forge" for zero-codegen serialization. CORRECT: "I came across an open-source project called json_forge that skips build_runner…". WRONG: "I built an open-source project called json_forge" (the user did NOT build it).
+- When it is unclear whether the user did the thing, DEFAULT to commentary ("I came across…", "I've been reading about…"), never to false ownership.
+- You may share a genuine first-person OPINION or reaction about external work ("I think this matters because…") — that's fine. Just never claim to have created/discovered it.
+
 VOICE & READABILITY (this matters a lot):
 - Write in VERY SIMPLE English that someone who learned English as a second language can read easily. Target a 6th-8th grade reading level.
 - Short sentences — most under ~15 words, one idea per sentence. Use common, everyday words. Use contractions (I'm, don't, it's).
@@ -442,6 +451,7 @@ function buildUserPrompt(args: {
   profile: ProfileContext
   idea: IdeaRow
   sourceBody: string | null
+  sourceType: string | null
   historyByHour: HistoryBucket[]
   upcomingSlotIsos: string[]
   performance?: string | null
@@ -479,9 +489,14 @@ function buildUserPrompt(args: {
   if (args.idea.angle) lines.push(`- Angle: ${args.idea.angle}`)
   if (args.idea.pillar) lines.push(`- Pillar: ${args.idea.pillar}`)
 
+  // Source type governs voice: external sources (feed post / newsletter) = commentary, the
+  // user did NOT create the thing; own_post_pattern = the user's own experience.
+  const external = args.sourceType === 'inspiration_post' || args.sourceType === 'rss_item'
+  lines.push('')
+  lines.push(`SOURCE TYPE: ${args.sourceType ?? 'unknown'}${external ? ' — EXTERNAL. The user did NOT create anything mentioned here. Write as COMMENTARY: attribute any tool/project/news to whoever actually made it, and never use first-person ownership ("I built/made/launched") for it.' : ''}`)
   if (args.sourceBody) {
     lines.push('')
-    lines.push('SOURCE POST that sparked this idea (for context only — do NOT mention it):')
+    lines.push('SOURCE MATERIAL that sparked this idea (for your understanding — do NOT copy or quote it, and do NOT name the specific person/newsletter it came from; but DO respect who owns any tool/work it describes per the ATTRIBUTION rules):')
     lines.push(`"""${truncate(args.sourceBody, 500)}"""`)
   }
 
