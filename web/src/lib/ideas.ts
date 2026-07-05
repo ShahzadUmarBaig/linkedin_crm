@@ -99,6 +99,7 @@ Rules:
 - NEVER clone a feed post. A feed/inspiration post is ONLY a signal of which TOPICS resonate right now — it is NOT a template. Do not reproduce a specific person's post, its claim, its structure, or its hook. If an idea would basically restate or lightly reword something someone you follow posted, DROP it entirely.
 - Every inspiration-sourced idea MUST take a clearly different stance than the post that sparked it: a contrarian counter-take, a different angle, the user's own first-hand experience, or a deeper/narrower cut. It must read as the user's original thought, never as a repost of someone else's.
 - Prefer ideas rooted in the user's OWN experience and past posts over riffs on others' posts. When in doubt, generate from the user's angle, not the feed's.
+- NEVER restate one of the user's OWN past posts. An own_post_pattern idea must add something NEW — a fresh lesson, an updated result, a contrarian reversal, the next chapter, or a different pillar's angle on the same theme. If your idea would say roughly the same thing as a post they already published (even reworded), DROP it. The user must not see their own old post handed back to them.
 - ATTRIBUTION: for source_type inspiration_post or rss_item, the idea is COMMENTARY on someone else's post/tool/news. The 'angle' must NEVER imply the user built, made, discovered, launched, or owns the thing. Phrase it as the user reacting to / analysing / sharing external work (e.g. "react to a new tool that…", "give a take on why X matters"), never "I built X". Only own_post_pattern ideas may be about something the user personally did.
 - Output a single JSON array. No commentary.`
 
@@ -212,19 +213,39 @@ function jaccard(a: Set<string>, b: Set<string>): number {
 
 const DUP_COMBINED = 0.42 // hook+angle overlap that means "same idea, reworded"
 const DUP_HOOK = 0.55 // near-identical hook
+// Directed containment: fraction of the IDEA's distinctive tokens that also appear in a source
+// post body. Jaccard fails here because a post body is long prose and the idea is a compressed
+// hook — their union is huge, so overlap looks small. Containment asks the right question:
+// "is this idea just a restatement of something already in a source post?"
+// NOTE: this only catches near-VERBATIM rewords (measured ~0.95 on real data). Conceptual
+// restatements that reuse the idea but swap the wording (~0.27) are below any threshold that
+// wouldn't also nuke legitimately-distinct ideas (~0.23) — those are prevented at the GENERATION
+// layer (the "NEVER restate an own post" rule + thinking budget), not here.
+const REWORD_CONTAINMENT = 0.6
+
+function containment(idea: Set<string>, body: Set<string>): number {
+  if (idea.size === 0) return 0
+  let inter = 0
+  for (const w of idea) if (body.has(w)) inter++
+  return inter / idea.size
+}
 
 function dropDuplicateIdeas(
   fresh: ParsedIdea[],
   existing: Array<{ hook: string | null; angle: string | null }>,
+  sourceBodies: string[] = [],
 ): ParsedIdea[] {
   const existingSigs = existing.map((e) => ({ combined: ideaTokens(e.hook, e.angle), hook: ideaTokens(e.hook) }))
+  const bodySigs = sourceBodies.map((b) => ideaTokens(b))
   const acceptedSigs: { combined: Set<string>; hook: Set<string> }[] = []
   const out: ParsedIdea[] = []
   for (const idea of fresh) {
     const sig = { combined: ideaTokens(idea.hook, idea.angle), hook: ideaTokens(idea.hook) }
     const isDup = (list: typeof existingSigs) =>
       list.some((e) => jaccard(sig.combined, e.combined) >= DUP_COMBINED || jaccard(sig.hook, e.hook) >= DUP_HOOK)
-    if (isDup(existingSigs) || isDup(acceptedSigs)) continue
+    // A reword of a real post: most of the idea's own words are already contained in that post.
+    const isReword = bodySigs.some((b) => containment(sig.combined, b) >= REWORD_CONTAINMENT)
+    if (isDup(existingSigs) || isDup(acceptedSigs) || isReword) continue
     out.push(idea)
     acceptedSigs.push(sig)
   }
@@ -309,10 +330,26 @@ export async function generateIdeas(
   ])
 
   const existingRows = (existingIdeas ?? []) as { hook: string | null; angle: string | null; status: string }[]
-  const existingHooks = existingRows.map((r) => r.hook).filter((h): h is string => Boolean(h))
-  const rejectedHooks = existingRows.filter((r) => r.status === 'rejected').map((r) => r.hook).filter((h): h is string => Boolean(h)).slice(0, 30)
+  // IMPORTANT: the avoid-list fed to the model must stay SMALL. Dumping 100+ "don't repeat these"
+  // hooks into the prompt strangles a fast model — it turns cautious and emits only 1-2 timid
+  // ideas (and falls back to rewording the user's own posts). Exhaustive de-duplication belongs in
+  // CODE (dropDuplicateIdeas), not the prompt. So the prompt gets only a small, recent slice for
+  // light guidance; the code layer guarantees true uniqueness against the full history + bodies.
+  const AVOID_HOOKS_IN_PROMPT = 20
+  const REJECTED_HOOKS_IN_PROMPT = 10
+  const activeRows = existingRows.filter((r) => r.status !== 'rejected')
+  const existingHooks = activeRows.map((r) => r.hook).filter((h): h is string => Boolean(h)).slice(0, AVOID_HOOKS_IN_PROMPT)
+  const rejectedHooks = existingRows
+    .filter((r) => r.status === 'rejected')
+    .map((r) => r.hook)
+    .filter((h): h is string => Boolean(h))
+    .slice(0, REJECTED_HOOKS_IN_PROMPT)
 
-  // 4. Build prompts + call AI
+  // 4. Build prompts + call AI.
+  // Over-ask: request a buffer above `target` so that after code-level dedup drops any
+  // near-restatements, we still reliably land ON the target instead of below it.
+  const GEN_BUFFER = 3
+  const askCount = Math.min(target + GEN_BUFFER, 10)
   const userPrompt = buildUserPrompt({
     profile: profile as { niche: string; audience: string | null; tone: string | null; pillars: Array<{ name: string; description: string }> },
     pillars,
@@ -323,7 +360,7 @@ export async function generateIdeas(
     rejectedHooks,
     performance,
     playbook,
-    count: target,
+    count: askCount,
   })
 
   const response = await generate({
@@ -331,7 +368,8 @@ export async function generateIdeas(
     task: 'idea_generation',
     system: SYSTEM_PROMPT,
     user: userPrompt,
-    maxTokens: 4096,
+    // Headroom so the (now enabled) thinking budget for idea_generation never starves the JSON.
+    maxTokens: 6144,
     scrapeRunId: opts?.scrapeRunId ?? null,
   })
 
@@ -342,10 +380,16 @@ export async function generateIdeas(
   }
 
   // 5b. Deterministic dedup — the prompt-level guard isn't enough; drop any idea too similar to
-  // an existing/rejected one, or to another idea in this same batch. Belt-and-suspenders.
-  const parsed = dropDuplicateIdeas(rawParsed, existingRows)
+  // an existing/rejected idea, to a SOURCE POST it merely reworded (own post or inspiration), or
+  // to another idea in this same batch. Then trim to the target count. Belt-and-suspenders.
+  const sourceBodies = [
+    ...(ownPosts ?? []).map((p) => p.body),
+    ...(inspirations ?? []).map((p) => p.body),
+  ].filter((b): b is string => Boolean(b))
+  const deduped = dropDuplicateIdeas(rawParsed, existingRows, sourceBodies)
+  const parsed = deduped.slice(0, target)
   if (parsed.length === 0) {
-    return { generated: 0, skipped: true, reason: 'All generated ideas duplicated existing/rejected ones — will retry next run.', costUsd: response.costUsd, model: response.model }
+    return { generated: 0, skipped: true, reason: 'All generated ideas duplicated existing ideas or merely reworded a source post — will retry next run.', costUsd: response.costUsd, model: response.model }
   }
 
   // 6. Resolve source URNs to row IDs
@@ -510,7 +554,8 @@ function buildUserPrompt(args: {
 }): string {
   const lines: string[] = []
 
-  lines.push(`Generate ${args.count} idea${args.count === 1 ? '' : 's'} based on the context below.`)
+  lines.push(`Generate ${args.count} DISTINCT idea${args.count === 1 ? '' : 's'} based on the context below.`)
+  lines.push(`This is non-negotiable: you MUST return exactly ${args.count} ideas in the JSON array — no fewer. If an idea you were about to write would just reword one of the source posts or repeat an existing hook, discard it and think of a genuinely different one instead. Never pad, never stop early.`)
   lines.push('')
   lines.push(`PROFILE`)
   lines.push(`- Niche: ${args.profile.niche}`)

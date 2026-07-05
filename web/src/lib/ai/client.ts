@@ -141,6 +141,12 @@ async function callGoogle(apiKey: string, model: string, req: GenerateRequest) {
   //   1. Model outputs raw JSON (no markdown fences)
   //   2. Response is guaranteed parseable JSON (or the API errors)
   //   3. No tokens wasted on prose preamble
+  // Most tasks (extraction/formatting) want thinking OFF: Gemini 2.5 "thinking" models otherwise
+  // spend the output budget on internal reasoning and silently truncate/empty the JSON.
+  // Idea generation is the exception — it's genuinely creative (differentiate against many prior
+  // hooks, spread scores, balance sources). With thinking off, the model turns cautious and emits
+  // only 1-2 timid ideas. A modest thinking budget lets it actually reason and hit the full count.
+  const thinkingBudget = req.task === 'idea_generation' ? 2048 : 0
   const response = await ai.models.generateContent({
     model,
     contents: req.user,
@@ -148,10 +154,7 @@ async function callGoogle(apiKey: string, model: string, req: GenerateRequest) {
       systemInstruction: req.system,
       maxOutputTokens: req.maxTokens ?? 4096,
       responseMimeType: 'application/json',
-      // Gemini 2.5 models are "thinking" models: by default they spend the output-token budget
-      // on internal reasoning, which silently truncated/emptied our JSON responses. Our tasks are
-      // extraction/formatting, not open reasoning, so disable thinking for reliable, complete JSON.
-      thinkingConfig: { thinkingBudget: 0 },
+      thinkingConfig: { thinkingBudget },
     },
   })
   return {
