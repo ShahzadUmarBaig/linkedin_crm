@@ -30,9 +30,12 @@ export default async function ComposePage({
       <div className="box pad-lg" style={{ textAlign: 'center' }}>
         <div className="h-sec">Nothing to compose yet</div>
         <p style={{ fontSize: 13, color: 'var(--muted)', margin: '8px 0 16px' }}>
-          Approve an idea and AI will draft a post here for you to review.
+          Approve an idea and AI will draft a post here for you to review — or write your own from a rough seed.
         </p>
-        <Link className="btn primary" href="/ideas">Go to Ideas →</Link>
+        <div className="row gap8" style={{ justifyContent: 'center' }}>
+          <Link className="btn primary" href="/ideas">Go to Ideas →</Link>
+          <Link className="btn ghost" href="/compose/new">Write from scratch</Link>
+        </div>
       </div>
     )
   }

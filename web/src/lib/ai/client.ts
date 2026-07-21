@@ -12,6 +12,7 @@ export type AiTask =
   | 'profile_inference'
   | 'idea_generation'
   | 'draft_write'
+  | 'draft_compose'
   | 'schedule_slot'
   | 'topic_extract'
 

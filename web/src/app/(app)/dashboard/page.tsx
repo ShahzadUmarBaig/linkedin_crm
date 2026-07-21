@@ -53,6 +53,7 @@ export default async function HomePage() {
             {todos.map((t) => (
               <Link className="btn human sm" href={t.href} key={t.n}>{t.title} →</Link>
             ))}
+            <Link className="btn ghost sm" href="/compose/new" title="Write your own post from a rough seed">Write from scratch</Link>
             {todos.length === 0 && <span className="tag auto"><span className="dot" />engine running</span>}
           </div>
         </div>

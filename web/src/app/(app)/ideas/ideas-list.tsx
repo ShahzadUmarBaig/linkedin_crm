@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useTransition } from 'react'
 import { useRouter } from 'next/navigation'
 import { approveIdeaAction, discardAllIdeasAction, regenerateIdeaAction, rejectIdeaAction, triggerGenerateIdeas, updateIdeaAction } from '@/app/actions/ideas'
@@ -95,6 +96,9 @@ export function IdeasView({
             {proposed.length > 0 && (
               <button className="btn danger" onClick={discardAll} disabled={generating}>Discard all</button>
             )}
+            <Link className="btn ghost" href="/compose/new">
+              <span className="ico" />Write from scratch
+            </Link>
             <button className="btn ghost" onClick={() => runGenerate(false)} disabled={generating}>
               <span className="ico" />{generating ? 'Generating…' : 'Generate'}
             </button>
@@ -123,12 +127,13 @@ export function IdeasView({
         <div className="box pad-lg" style={{ textAlign: 'center' }}>
           <div className="note" style={{ display: 'inline-block', textAlign: 'left' }}>
             No ideas yet. Click <b>Generate</b> above, or run a scrape from the extension — the queue
-            auto-fills to 5 after each scrape.
+            auto-fills to 5 after each scrape. You can also skip the queue and write your own.
           </div>
-          <div className="mt16">
+          <div className="row gap8 mt16" style={{ justifyContent: 'center' }}>
             <button className="btn primary" onClick={() => runGenerate(true)} disabled={generating}>
               {generating ? 'Generating…' : 'Generate 5 ideas'}
             </button>
+            <Link className="btn ghost" href="/compose/new">Write from scratch</Link>
           </div>
         </div>
       ) : (

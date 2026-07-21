@@ -179,9 +179,11 @@ export function ComposeView({ view, drafts = [] }: { view: CalendarSlotView; dra
                 {saving ? 'Saving…' : 'Save edits'}
               </button>
               <button className="btn ghost sm" onClick={copy}>Copy</button>
-              <button className="btn ghost sm" onClick={regenerate} disabled={busy} title="Re-run the AI with hashtags + image prompt">
-                {busy ? 'Regenerating…' : 'Regenerate'}
-              </button>
+              {view.idea_id && (
+                <button className="btn ghost sm" onClick={regenerate} disabled={busy} title="Re-run the AI with hashtags + image prompt">
+                  {busy ? 'Regenerating…' : 'Regenerate'}
+                </button>
+              )}
             </div>
             <span className="eyebrow">{body.length} / {MAX}</span>
           </div>

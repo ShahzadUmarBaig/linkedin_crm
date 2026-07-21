@@ -5,7 +5,7 @@
 import { createSupabaseServiceClient } from './supabase/server'
 import { generate } from './ai/client'
 import { pickOptimalSlot } from './insights'
-import { getContentInsights, performanceProfilePrompt } from './content-insights'
+import { getContentInsights, performanceProfilePrompt, type ContentInsights } from './content-insights'
 import { getCreatorPlaybook } from './playbook'
 import type { IdeaRow } from './ideas'
 
@@ -246,6 +246,238 @@ export async function regenerateImagePrompt(
   if (error) throw new Error(`image prompt update: ${error.message}`)
 
   return { imagePrompt }
+}
+
+// ---------- compose from user seed ----------
+// "Write from scratch" flow: user brings a 2-line headline + 2-line body hint
+// (and optionally their own image). We expand it into a full post using the SAME
+// intelligence stack the approve-idea flow uses — playbook, content insights,
+// engagement history, and a voice sample from the user's own top posts — so the
+// output sounds like them and follows what actually earns engagement.
+//
+// Unlike approveIdea we do NOT create an ideas row (this bypasses the proposal loop).
+// drafts.idea_id stays null; the attribution layer still links it back to the real
+// post once scraped, so the learning loop closes.
+
+export interface ComposeSeedInput {
+  headlineHint: string
+  bodyHint: string
+  imageUrl?: string | null
+}
+
+export interface ComposeSeedResult {
+  draftId: string
+  slotId: string
+  scheduledFor: string
+  schedulingReasoning: string
+  costUsd: number
+  model: string
+}
+
+export async function composeDraftFromSeed(
+  userId: string,
+  seed: ComposeSeedInput,
+): Promise<ComposeSeedResult> {
+  const headlineHint = seed.headlineHint.trim()
+  const bodyHint = seed.bodyHint.trim()
+  if (headlineHint.length < 3 && bodyHint.length < 3) {
+    throw new Error('Add at least a short headline hint or body hint to work from.')
+  }
+
+  const supabase = createSupabaseServiceClient()
+
+  const [{ data: profile }, historyByHour, upcomingSlots, insights, playbook] = await Promise.all([
+    supabase.from('profile').select('niche, audience, tone, pillars, posting_frequency_per_week').eq('user_id', userId).maybeSingle(),
+    loadEngagementHistory(supabase, userId),
+    loadUpcomingSlots(supabase, userId),
+    getContentInsights(userId, supabase),
+    getCreatorPlaybook(userId, supabase),
+  ])
+  if (!profile) throw new Error('Profile not set — visit /profile first.')
+
+  const performance = performanceProfilePrompt(insights)
+  const voiceSamples = pickVoiceSamples(insights)
+  const hasImage = !!seed.imageUrl
+
+  const user = buildComposeUserPrompt({
+    profile: profile as ProfileContext,
+    headlineHint,
+    bodyHint,
+    hasImage,
+    performance,
+    playbook,
+    voiceSamples,
+    historyByHour,
+    upcomingSlotIsos: upcomingSlots,
+    now: new Date(),
+  })
+
+  const response = await generate({
+    userId,
+    task: 'draft_compose',
+    system: hasImage ? COMPOSE_SYSTEM_PROMPT_WITH_IMAGE : COMPOSE_SYSTEM_PROMPT,
+    user,
+    maxTokens: 4096,
+  })
+
+  const parsed = parseDraftResponse(response.text)
+  if (!parsed) throw new Error('AI did not return a valid draft. Try again.')
+
+  // Only guard the image prompt when we asked for one (user didn't bring an image).
+  const imagePrompt = hasImage
+    ? null
+    : await ensureConcreteImagePrompt(userId, parsed.imagePrompt, {
+        body: parsed.body,
+        concreteSubject: parsed.concreteSubject,
+      })
+
+  // Insert draft. If the user uploaded an image, populate image_urls + selected so the
+  // compose view shows it immediately — mirrors the FAL-generated shape.
+  const { data: draft, error: draftErr } = await supabase
+    .from('drafts')
+    .insert({
+      user_id: userId,
+      idea_id: null,
+      body: parsed.body,
+      image_prompt: imagePrompt,
+      image_urls: hasImage ? [seed.imageUrl] : null,
+      selected_image_url: hasImage ? seed.imageUrl : null,
+      version: 1,
+      ai_run_id: response.aiRunId || null,
+    })
+    .select('id')
+    .single()
+  if (draftErr || !draft) throw new Error(`drafts insert: ${draftErr?.message}`)
+
+  // Same slot picker as approveIdea — data-driven, not the AI's guess. Consistency +
+  // keeps the "optimal window" logic in one place.
+  const optimal = await pickOptimalSlot(userId, { avoidIsos: upcomingSlots })
+
+  const { data: slot, error: slotErr } = await supabase
+    .from('calendar_slots')
+    .insert({
+      user_id: userId,
+      draft_id: draft.id,
+      scheduled_for: optimal.iso,
+      ai_chosen: true,
+      ai_reasoning: optimal.reasoning,
+      status: 'scheduled',
+    })
+    .select('id')
+    .single()
+  if (slotErr || !slot) throw new Error(`calendar_slots insert: ${slotErr?.message}`)
+
+  return {
+    draftId: draft.id,
+    slotId: slot.id,
+    scheduledFor: optimal.iso,
+    schedulingReasoning: optimal.reasoning,
+    costUsd: response.costUsd,
+    model: response.model,
+  }
+}
+
+// Voice sample = the user's own top-performing post bodies, so the AI can mirror how
+// THEY actually write. content-insights already surfaces top posts weighted per-author;
+// we filter to reasonably long text posts (not one-liners) and cap total chars.
+function pickVoiceSamples(insights: ContentInsights): string[] {
+  if (!insights.hasData || insights.topPosts.length === 0) return []
+  const out: string[] = []
+  let chars = 0
+  for (const p of insights.topPosts) {
+    const body = (p.body ?? '').trim()
+    if (body.length < 80) continue
+    const clip = body.length > 500 ? body.slice(0, 500) + '…' : body
+    out.push(clip)
+    chars += clip.length
+    if (out.length >= 4 || chars > 1600) break
+  }
+  return out
+}
+
+// COMPOSE_BASE_RULES, COMPOSE_SYSTEM_PROMPT, and COMPOSE_SYSTEM_PROMPT_WITH_IMAGE live at the
+// BOTTOM of this file — they interpolate IMAGE_PROMPT_RULES, which is declared further down,
+// and TypeScript const initializers run in source order at module load (TDZ). Keeping them below
+// IMAGE_PROMPT_RULES avoids a ReferenceError. composeDraftFromSeed references them at call time,
+// which is fine (function bodies resolve names when invoked, not when declared).
+
+function buildComposeUserPrompt(args: {
+  profile: ProfileContext
+  headlineHint: string
+  bodyHint: string
+  hasImage: boolean
+  performance: string | null
+  playbook: string | null
+  voiceSamples: string[]
+  historyByHour: HistoryBucket[]
+  upcomingSlotIsos: string[]
+  now: Date
+}): string {
+  const lines: string[] = []
+
+  lines.push(`Current time: ${args.now.toISOString()}`)
+  lines.push(`Posting frequency target: ${args.profile.posting_frequency_per_week} posts per week`)
+  lines.push('')
+  lines.push('PROFILE')
+  if (args.profile.niche) lines.push(`- Niche: ${args.profile.niche}`)
+  if (args.profile.audience) lines.push(`- Audience: ${args.profile.audience}`)
+  if (args.profile.tone) lines.push(`- Tone: ${args.profile.tone}`)
+  if (args.profile.pillars.length > 0) {
+    lines.push('- Pillars:')
+    for (const p of args.profile.pillars) lines.push(`  • "${p.name}": ${p.description}`)
+  }
+
+  if (args.playbook) {
+    lines.push('')
+    lines.push('YOUR CREATOR PLAYBOOK (learned from your own results — apply where it fits this seed):')
+    lines.push(args.playbook)
+  }
+
+  if (args.performance) {
+    lines.push('')
+    lines.push(`PERFORMANCE GUIDANCE — ${args.performance}`)
+  }
+
+  if (args.voiceSamples.length > 0) {
+    lines.push('')
+    lines.push('VOICE SAMPLES — the user\'s own top-performing past posts. Match this rhythm, word choice, and opening/closing style. Do NOT copy content or examples from them; only the VOICE:')
+    for (let i = 0; i < args.voiceSamples.length; i++) {
+      lines.push(`--- Sample ${i + 1} ---`)
+      lines.push(args.voiceSamples[i])
+    }
+    lines.push('--- end samples ---')
+  }
+
+  lines.push('')
+  lines.push('USER SEED — this is what THEY want to say. Preserve every concrete detail, opinion, or name they included. Sharpen; do not replace.')
+  lines.push(`- Headline hint (their intended hook — polish it, keep the claim): """${args.headlineHint || '(none — infer a strong hook from the body hint)'}"""`)
+  lines.push(`- Body hint (their intended point — expand around it): """${args.bodyHint || '(none — build the post from the headline hint)'}"""`)
+  if (args.hasImage) {
+    lines.push('- Image: user has attached their own image. Write the body to work alongside a visual (referencing "this photo" is fine if it flows naturally, but not required).')
+  }
+
+  lines.push('')
+  lines.push('PAST ENGAGEMENT HISTORY (day-of-week UTC, hour UTC, post count, avg engagement) — for the scheduledFor field only:')
+  if (args.historyByHour.length === 0) {
+    lines.push('(no history yet — return a weekday morning ISO)')
+  } else {
+    const sorted = [...args.historyByHour].sort((a, b) => b.avgEngagement - a.avgEngagement).slice(0, 8)
+    for (const b of sorted) {
+      lines.push(`- DOW=${b.dayOfWeek} (${dowName(b.dayOfWeek)}) hour=${b.hourUtc}:00 UTC, ${b.count} posts, avg ${b.avgEngagement.toFixed(1)}`)
+    }
+  }
+
+  lines.push('')
+  lines.push('existingSlotsIso (do NOT return any of these):')
+  if (args.upcomingSlotIsos.length === 0) {
+    lines.push('(none)')
+  } else {
+    for (const iso of args.upcomingSlotIsos) lines.push(`- ${iso}`)
+  }
+
+  lines.push('')
+  lines.push('Return the JSON object as specified.')
+  return lines.join('\n')
 }
 
 function parseImageOnlyResponse(text: string): { concreteSubject: string | null; imagePrompt: string } | null {
@@ -656,3 +888,67 @@ Return ONLY the rewritten prompt paragraph — no preamble, no quotes, no JSON.`
   }
   return imagePrompt
 }
+
+// ---------- compose-from-seed prompts (must be BELOW IMAGE_PROMPT_RULES — see note above) ----------
+
+const COMPOSE_BASE_RULES = `The user has brought you a rough seed for a LinkedIn post they want to publish. Your job is to turn it into a polished, high-performing post — while KEEPING the user's specific intent, their point, and their voice. You are an editor, not a rewriter of what they mean.
+
+HOW TO TREAT THE SEED (this is the most important thing):
+- Their headline hint is what they WANT the post to be ABOUT. If it's punchy, keep it near-verbatim; if it's flat, sharpen it into a scroll-stopping opener while keeping the same claim/idea.
+- Their body hint carries the specific point they want to make. Preserve every concrete detail, opinion, number, name, or example they included. Expand around them — do NOT drop or generalise them.
+- Never invent facts, numbers, tools, people, projects, or claims the user did not imply. If the seed says "I did X", you may expand on X — but do not add fake specifics like a fake company name or fake metric.
+- If the seed is only a topic (no clear opinion), take the user's implicit angle and commit to it — LinkedIn rewards a clear point of view, not a neutral summary.
+
+VOICE (critical):
+- If VOICE SAMPLES are provided, they are the user's actual past posts. Mirror their sentence rhythm, word choice, and how they open/close posts. If they use short lines, use short lines. If they open with a story, that's their style.
+- Write in VERY SIMPLE English readable by a non-native speaker (6th-8th grade level). Short sentences, common words, contractions (I'm, don't).
+- Sound like a real person talking to a friend — warm, direct, plain. NOT corporate, NOT literary.
+- Prefer plain words: "use" not "utilize", "help" not "facilitate", "a lot" not "a plethora", "make hard things easy to understand" not "demystifying complex topics".
+- Avoid generic LinkedIn cliches ("excited to share", "I'm thrilled", "let me know your thoughts", "here's the thing", "the truth is").
+
+FORMATTING (LinkedIn shows PLAIN TEXT — this matters):
+- NEVER use markdown: no asterisks (* or **), no underscores (_), no backticks, no # headings, no bold/italic. LinkedIn renders those as literal characters and it screams "AI".
+- Short paragraphs with a blank line between them.
+- If you list points, put each on its own short line (you may start a line with a plain "-"). Prefer flowing short sentences over lists when in doubt.
+
+STRUCTURE:
+- Line 1 is the hook: your polished version of the user's headline hint. Must earn the scroll-stop on its own.
+- 150-300 words total (unless the user's seed is clearly meant to be much shorter — respect that).
+- End with a simple question that invites a reply.
+- Final line: 3-5 relevant hashtags, mixing 1-2 broad + 2-3 niche, CamelCase multi-word (e.g. #SoftwareEngineering). Pull from the user's pillars/topics.
+
+APPLY THE LEARNING SIGNALS (where they genuinely fit — never force):
+- The CREATOR PLAYBOOK (if provided) is rules the engine learned from THIS user's past results. Apply what fits this seed.
+- The PERFORMANCE GUIDANCE (if provided) lists hook styles, formats, and lengths that outperform in this niche. Lean toward these WHERE they fit the seed — never sacrifice the point for a pattern.
+
+ATTRIBUTION SAFETY:
+- The user is writing about their OWN experience/opinion unless the seed clearly says otherwise. Use "I" naturally. Never fabricate ownership of external tools/projects/companies the user didn't mention.`
+
+const COMPOSE_SYSTEM_PROMPT = `You expand a user's rough seed into a publishable LinkedIn post AND generate an image prompt for it.
+
+Return ONLY a JSON object (no prose, no markdown fences):
+{
+  "body": "The full LinkedIn post in PLAIN TEXT following ALL the rules below.",
+  "scheduledFor": "ISO 8601 UTC datetime; ignored downstream (we pick the slot from user data) but return a sensible one anyway — at least 24h out, weekday morning if no history.",
+  "schedulingReasoning": "One short sentence — not surfaced, but return something coherent.",
+  "centralArgument": "In ONE short sentence: the post's single specific claim — NOT its broad topic.",
+  "concreteSubject": "ONE concrete, real, physical, photographable object or staged real-world scene that visually argues that claim. MANDATORY. Never a robot, hand, hologram, glowing data stream, brain, circuit board, phone/screen UI, or any floating digital element.",
+  "imagePrompt": "ONE rock-solid prompt for the FLUX.2 [pro] text-to-image model, built ENTIRELY around 'concreteSubject'. See the imagePrompt rules below."
+}
+
+${COMPOSE_BASE_RULES}
+
+${IMAGE_PROMPT_RULES}`
+
+// Variant used when the user brought their own image — skip imagePrompt entirely so
+// we don't waste output tokens on a prompt no one will use.
+const COMPOSE_SYSTEM_PROMPT_WITH_IMAGE = `You expand a user's rough seed into a publishable LinkedIn post. The user has ALREADY attached their own image — do NOT generate an image prompt.
+
+Return ONLY a JSON object (no prose, no markdown fences):
+{
+  "body": "The full LinkedIn post in PLAIN TEXT following ALL the rules below.",
+  "scheduledFor": "ISO 8601 UTC datetime; ignored downstream (we pick the slot from user data) but return a sensible one anyway — at least 24h out, weekday morning if no history.",
+  "schedulingReasoning": "One short sentence — not surfaced, but return something coherent."
+}
+
+${COMPOSE_BASE_RULES}`
