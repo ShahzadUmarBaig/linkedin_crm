@@ -56,13 +56,24 @@ export function ComposeNewForm() {
     setMsg(null)
     const formData = new FormData(e.currentTarget)
     startTransition(async () => {
-      const r = await composeFromSeedAction(formData)
-      if ('error' in r) {
-        setMsg({ kind: 'err', text: r.error })
-        return
+      // Wrap the action call so a thrown error (e.g. exceeded server-action body limit,
+      // AI provider failure) surfaces as an inline banner instead of crashing the page.
+      try {
+        const r = await composeFromSeedAction(formData)
+        if ('error' in r) {
+          setMsg({ kind: 'err', text: r.error })
+          return
+        }
+        // Redirect straight into the standard compose refinement view for this new draft.
+        router.push(`/compose?slot=${r.slotId}`)
+      } catch (err) {
+        const raw = err instanceof Error ? err.message : String(err)
+        // Body-size failures show up as "Body exceeded X" from Next.js.
+        const text = /body\s+exceeded|payload\s+too\s+large|413/i.test(raw)
+          ? 'Image too large for upload. Please pick a smaller image (under 8 MB).'
+          : `Something broke: ${raw}`
+        setMsg({ kind: 'err', text })
       }
-      // Redirect straight into the standard compose refinement view for this new draft.
-      router.push(`/compose?slot=${r.slotId}`)
     })
   }
 
