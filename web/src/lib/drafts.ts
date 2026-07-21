@@ -88,13 +88,15 @@ export async function approveIdea(userId: string, ideaId: string): Promise<Appro
     concreteSubject: parsed.concreteSubject,
   })
 
-  // 5. Insert draft
+  // 5. Insert draft. ensureHashtags backstops the model in case it dropped the mandatory
+  // hashtag line (Gemini sometimes misreads "#Tag" as forbidden markdown).
+  const body = ensureHashtags(parsed.body, (profile as ProfileContext).pillars)
   const { data: draft, error: draftErr } = await supabase
     .from('drafts')
     .insert({
       user_id: userId,
       idea_id: ideaId,
-      body: parsed.body,
+      body,
       image_prompt: imagePrompt,
       version: 1,
       ai_run_id: response.aiRunId || null,
@@ -193,14 +195,15 @@ export async function regenerateDraft(
     concreteSubject: parsed.concreteSubject,
   })
 
+  const body = ensureHashtags(parsed.body, (profile as ProfileContext).pillars)
   const { error } = await supabase
     .from('drafts')
-    .update({ body: parsed.body, image_prompt: imagePrompt, ai_run_id: response.aiRunId || null, updated_at: new Date().toISOString() })
+    .update({ body, image_prompt: imagePrompt, ai_run_id: response.aiRunId || null, updated_at: new Date().toISOString() })
     .eq('id', draftId)
     .eq('user_id', userId)
   if (error) throw new Error(`draft update: ${error.message}`)
 
-  return { body: parsed.body, imagePrompt }
+  return { body, imagePrompt }
 }
 
 // Regenerate ONLY the image prompt for an existing draft, using the current
@@ -333,12 +336,14 @@ export async function composeDraftFromSeed(
 
   // Insert draft. If the user uploaded an image, populate image_urls + selected so the
   // compose view shows it immediately — mirrors the FAL-generated shape.
+  // ensureHashtags backstops the model in case it dropped the mandatory hashtag line.
+  const body = ensureHashtags(parsed.body, (profile as ProfileContext).pillars)
   const { data: draft, error: draftErr } = await supabase
     .from('drafts')
     .insert({
       user_id: userId,
       idea_id: null,
-      body: parsed.body,
+      body,
       image_prompt: imagePrompt,
       image_urls: hasImage ? [seed.imageUrl] : null,
       selected_image_url: hasImage ? seed.imageUrl : null,
@@ -673,7 +678,8 @@ VOICE & READABILITY (this matters a lot):
 - Spoon-feed the point: explain it plainly like you're helping someone learn. No jargon unless you explain it in simple words right away.
 
 FORMATTING (LinkedIn shows PLAIN TEXT only — this is critical):
-- NEVER use markdown or formatting symbols: no asterisks (* or **), no underscores (_), no backticks, no # headings, no bold or italic. LinkedIn does NOT render them — they appear as literal characters and instantly look AI-generated.
+- NEVER use markdown or formatting symbols: no asterisks (* or **), no underscores (_), no backticks, no markdown headings (a "#" followed by a SPACE, like "# Title" or "## Section"), no bold or italic. LinkedIn does NOT render them — they appear as literal characters and instantly look AI-generated.
+- HASHTAGS ARE NOT MARKDOWN and ARE REQUIRED. A hashtag is "#" glued directly to a word with NO space (e.g. #SoftwareEngineering, #AI, #Startups). The above "no # heading" rule ONLY forbids "# " (hash + space). The final hashtag line is mandatory — see the hashtag rule above.
 - Emphasize with word choice and short lines, never with symbols.
 - If you list a few points, put each on its own short line (you may begin a line with a plain "-"), but prefer short flowing sentences over lists.
 
@@ -831,6 +837,27 @@ function sanitizeBody(s: string): string {
     .trim()
 }
 
+// Deterministic hashtag guard: Gemini in particular sometimes drops the final hashtag line
+// despite the MANDATORY instruction (it treats "#" as markdown even though the prompt
+// distinguishes "# " from "#Word"). If the last non-empty line has no hashtags, append
+// tags derived from the user's pillars so the post always ships with hashtags.
+export function ensureHashtags(body: string, pillars: Array<{ name: string }>): string {
+  if (hasHashtagLine(body)) return body
+  const tags = pillars
+    .slice(0, 4)
+    .map((p) => '#' + p.name.replace(/[^A-Za-z0-9]/g, ''))
+    .filter((t) => t.length > 1)
+  if (tags.length === 0) return body // no pillars to work with — leave as-is rather than fake it
+  return body.replace(/\s+$/, '') + '\n\n' + tags.join(' ')
+}
+
+function hasHashtagLine(body: string): boolean {
+  const lastLine = body.split('\n').map((l) => l.trim()).filter((l) => l.length > 0).pop() ?? ''
+  // A real hashtag line has at least 2 space-separated #Word tokens on a single line.
+  const tagCount = lastLine.split(/\s+/).filter((w) => /^#\w{2,}/.test(w)).length
+  return tagCount >= 2
+}
+
 function stripJsonFence(s: string): string {
   const match = s.match(/```(?:json)?\s*([\s\S]*?)\s*```/)
   return match ? match[1] : s
@@ -907,7 +934,7 @@ VOICE (critical):
 - Avoid generic LinkedIn cliches ("excited to share", "I'm thrilled", "let me know your thoughts", "here's the thing", "the truth is").
 
 FORMATTING (LinkedIn shows PLAIN TEXT — this matters):
-- NEVER use markdown: no asterisks (* or **), no underscores (_), no backticks, no # headings, no bold/italic. LinkedIn renders those as literal characters and it screams "AI".
+- NEVER use markdown: no asterisks (* or **), no underscores (_), no backticks, no markdown headings (a "#" followed by a SPACE, like "# Title"), no bold/italic. LinkedIn renders those as literal characters and it screams "AI".
 - Short paragraphs with a blank line between them.
 - If you list points, put each on its own short line (you may start a line with a plain "-"). Prefer flowing short sentences over lists when in doubt.
 
@@ -915,7 +942,13 @@ STRUCTURE:
 - Line 1 is the hook: your polished version of the user's headline hint. Must earn the scroll-stop on its own.
 - 150-300 words total (unless the user's seed is clearly meant to be much shorter — respect that).
 - End with a simple question that invites a reply.
-- Final line: 3-5 relevant hashtags, mixing 1-2 broad + 2-3 niche, CamelCase multi-word (e.g. #SoftwareEngineering). Pull from the user's pillars/topics.
+
+HASHTAGS (MANDATORY — do NOT skip this):
+- After the closing question, add ONE MORE line: 3-5 hashtags relevant to the post's actual topic, space-separated on a single line. Example: "#Palestine #Travel #Reflection #Perspective".
+- Hashtags are "#" glued directly to a word with NO space (e.g. #Startups, #AI, #SoftwareEngineering). Multi-word tags use CamelCase.
+- Hashtags are NOT markdown — the "no # headings" rule above only forbids "# " (hash + space). #Word (no space) is a hashtag and is REQUIRED here.
+- Mix: 1-2 broad tags (e.g. #Leadership, #Career) + 2-3 specific ones tied to the post's actual subject or the user's pillars/topics.
+- If you skip the hashtag line, the post is considered incomplete and will be rejected.
 
 APPLY THE LEARNING SIGNALS (where they genuinely fit — never force):
 - The CREATOR PLAYBOOK (if provided) is rules the engine learned from THIS user's past results. Apply what fits this seed.
